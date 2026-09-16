@@ -54,4 +54,4 @@ supabase/.temp/
 # 注意：.impeccable/surfaces/ 里的方向契约要提交，因此只忽略这两项
 .impeccable/review/
 .impeccable/questions/
-
+.impeccable/decision/

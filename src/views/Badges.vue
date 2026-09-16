@@ -1,20 +1,23 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { mockBadges } from '../data/mockData'
+import { computed, onMounted } from 'vue'
 import { useUserStore } from '../stores/user'
 
 const userStore = useUserStore()
 
+// 勋章定义来自数据库（失败时 store 已自动回退本地 mock）
 const allBadges = computed(() => {
-  return mockBadges.map((badge) => ({
+  return userStore.badges.map((badge) => ({
     ...badge,
     unlocked: userStore.progress.badges.includes(badge.id),
-    unlockedAt: userStore.progress.badges.includes(badge.id) ? new Date().toISOString() : undefined,
   }))
 })
 
 const unlockedCount = computed(() => {
   return allBadges.value.filter((b) => b.unlocked).length
+})
+
+onMounted(() => {
+  void userStore.loadFromDatabase()
 })
 </script>
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { useLessonStore } from '../stores/lesson'
@@ -7,12 +8,35 @@ const router = useRouter()
 const userStore = useUserStore()
 const lessonStore = useLessonStore()
 
-const lessons = lessonStore.getAllLessons()
-const recentLessons = lessons.slice(0, 3)
+// 课程数据改为异步加载（优先数据库，失败回退本地），因此用 computed 保持响应式
+const recentLessons = computed(() => lessonStore.allLessons.slice(0, 3))
+
+// 断点续学：上次未完成的课程
+const resumeLesson = computed(() => {
+  const target = userStore.resumeTarget
+  if (!target) return null
+  return lessonStore.getLessonById(target.lessonId) ?? null
+})
+
+const resumePositionText = computed(() => {
+  const lesson = resumeLesson.value
+  const target = userStore.resumeTarget
+  if (!lesson || !target) return ''
+  return `第 ${target.position + 1} / ${lesson.questions.length} 题`
+})
+
+const continueLearning = () => {
+  const target = userStore.resumeTarget
+  if (target) router.push(`/lessons/${target.lessonId}`)
+}
 
 const startLearning = (lessonId: string) => {
   router.push(`/lessons/${lessonId}`)
 }
+
+onMounted(() => {
+  void lessonStore.loadLessons()
+})
 </script>
 
 <template>
@@ -57,6 +81,35 @@ const startLearning = (lessonId: string) => {
             查看学习路径
           </router-link>
         </div>
+      </div>
+    </div>
+
+    <!-- 断点续学卡片 -->
+    <div
+      v-if="resumeLesson"
+      class="relative overflow-hidden bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl shadow-xl p-6 md:p-8"
+    >
+      <div class="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full"></div>
+      <div class="absolute -bottom-12 right-24 w-32 h-32 bg-white/10 rounded-full"></div>
+
+      <div class="relative flex flex-col md:flex-row md:items-center gap-6">
+        <div class="text-6xl">{{ resumeLesson.coverImage || '📖' }}</div>
+
+        <div class="flex-1 space-y-1">
+          <p class="text-amber-50 text-sm font-medium">继续上次的学习</p>
+          <h3 class="text-2xl md:text-3xl font-bold text-white">{{ resumeLesson.title }}</h3>
+          <p class="text-amber-50 text-sm">
+            已完成 {{ resumePositionText }} · 上次学习
+            {{ new Date(userStore.progress.lastStudiedAt || '').toLocaleDateString('zh-CN') }}
+          </p>
+        </div>
+
+        <button
+          @click="continueLearning"
+          class="px-8 py-4 bg-white text-amber-600 rounded-xl font-bold hover:bg-amber-50 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 whitespace-nowrap"
+        >
+          继续学习 →
+        </button>
       </div>
     </div>
 

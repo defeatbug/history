@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useLessonStore } from '../stores/lesson'
 import { useUserStore } from '../stores/user'
@@ -7,10 +8,16 @@ const router = useRouter()
 const lessonStore = useLessonStore()
 const userStore = useUserStore()
 
-const lessons = lessonStore.getAllLessons()
+// 异步数据源 → 使用 computed 保持响应式
+const lessons = computed(() => lessonStore.allLessons)
 
 const isCompleted = (lessonId: string) => {
   return userStore.progress.completedLessons.includes(lessonId)
+}
+
+/** 是否有未完成的断点 */
+const isInProgress = (lessonId: string) => {
+  return userStore.resumeTarget?.lessonId === lessonId
 }
 
 const startLesson = (lessonId: string) => {
@@ -22,6 +29,10 @@ const difficultyLabels = {
   intermediate: '中级',
   advanced: '高级',
 }
+
+onMounted(() => {
+  void lessonStore.loadLessons()
+})
 </script>
 
 <template>
@@ -49,6 +60,14 @@ const difficultyLabels = {
           >
             <span class="text-xl">✓</span>
           </div>
+        </div>
+
+        <!-- 进行中标记 -->
+        <div
+          v-else-if="isInProgress(lesson.id)"
+          class="absolute top-4 right-4 z-20 px-3 py-1 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full text-xs font-bold shadow-lg"
+        >
+          继续学习
         </div>
 
         <!-- 渐变背景 -->

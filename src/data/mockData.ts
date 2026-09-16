@@ -15,7 +15,7 @@ export interface Lesson {
 export interface Question {
   id: string
   content: string
-  type: 'multiple_choice' | 'matching' | 'scenario'
+  type: 'multiple_choice' | 'matching' | 'scenario' | 'fill_blank'
   options: string[]
   answer: number // 正确答案索引
   explanation?: string
@@ -37,6 +37,12 @@ export interface UserProgress {
   totalStudyTime: number // 分钟
   correctRate: number // 正确率 0-1
   currentStreak: number // 连续学习天数
+  /** 断点续学：上次学习的课程 id */
+  lastLessonId?: string | null
+  /** 断点续学：上次答到的题目索引 */
+  lastPosition?: number
+  /** 上次学习时间（ISO 字符串） */
+  lastStudiedAt?: string | null
 }
 
 // Mock 课程数据

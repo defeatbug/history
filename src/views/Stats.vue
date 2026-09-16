@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useUserStore } from '../stores/user'
 import { useLessonStore } from '../stores/lesson'
 
 const userStore = useUserStore()
 const lessonStore = useLessonStore()
+
+onMounted(() => {
+  void lessonStore.loadLessons()
+  void userStore.loadFromDatabase()
+})
 
 const totalLessons = computed(() => lessonStore.getAllLessons().length)
 const completionRate = computed(() => {

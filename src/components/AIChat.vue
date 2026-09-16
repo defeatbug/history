@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
-import { streamChatCompletion, type ChatMessage } from '@/services/openai'
+import { useRouter } from 'vue-router'
+import { streamChat, AiError, type ChatMessage } from '@/services/ai'
 
 const isOpen = defineModel<boolean>('isOpen', { default: false })
 
@@ -24,6 +25,15 @@ const inputMessage = ref('')
 const isLoading = ref(false)
 const messageContainer = ref<HTMLElement>()
 const errorMessage = ref('')
+/** 错误是否因为「未登录」引起（游客模式会碰到） */
+const needsLogin = ref(false)
+
+const router = useRouter()
+
+const goToLogin = () => {
+  isOpen.value = false
+  router.push('/login')
+}
 
 const sendMessage = async () => {
   if (!inputMessage.value.trim() || isLoading.value) return
@@ -65,16 +75,9 @@ const sendMessage = async () => {
         content: msg.content,
       }))
 
-    // 使用 DeepSeek API 配置（使用 deepseek-chat 模型，快速且经济）
-    const options = {
-      model: 'deepseek-chat',
-      temperature: 0.7,
-      maxTokens: 2000,
-    }
-
-    // 流式获取AI回复
+    // 模型与密钥均在服务端（Edge Function），前端不再传递
     let fullContent = ''
-    for await (const chunk of streamChatCompletion(conversationMessages, options)) {
+    for await (const chunk of streamChat(conversationMessages)) {
       fullContent += chunk
 
       // 更新AI消息内容
@@ -96,14 +99,20 @@ const sendMessage = async () => {
 
     isLoading.value = false
     errorMessage.value = ''
+    needsLogin.value = false
   } catch (error) {
-    console.error('DeepSeek API error:', error)
+    console.error('[AIChat] 请求失败:', error)
 
-    // 提供更友好的错误提示
-    if (error instanceof Error) {
+    // 区分「需登录」「限流」「其他错误」
+    if (error instanceof AiError) {
       errorMessage.value = error.message
+      needsLogin.value = error.needsLogin
+    } else if (error instanceof Error) {
+      errorMessage.value = error.message
+      needsLogin.value = false
     } else {
       errorMessage.value = '请求失败，请稍后重试'
+      needsLogin.value = false
     }
 
     // 移除空的AI消息
@@ -183,9 +192,16 @@ const formatTime = (date: Date) => {
       <!-- 错误提示 -->
       <div v-if="errorMessage" class="flex justify-start">
         <div
-          class="bg-red-50 border-l-4 border-red-500 rounded-2xl px-4 py-3 shadow-sm max-w-[80%]"
+          class="bg-red-50 border-l-4 border-red-500 rounded-2xl px-4 py-3 shadow-sm max-w-[80%] space-y-2"
         >
           <p class="text-sm text-red-700">{{ errorMessage }}</p>
+          <button
+            v-if="needsLogin"
+            @click="goToLogin"
+            class="text-xs px-3 py-1.5 bg-amber-500 text-white rounded-lg font-semibold hover:bg-amber-600 transition-colors"
+          >
+            去登录 / 注册 →
+          </button>
         </div>
       </div>
     </div>

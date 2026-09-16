@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { toast } from 'vue3-toastify'
+import { describeAuthError } from '@/utils/authErrors'
 
+const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
@@ -15,6 +17,11 @@ const errorMessage = ref('')
 const isLoading = ref(false)
 const successMessage = ref('')
 
+// 注册后需先验证邮箱（开启「邮箱确认」时不会返回会话）
+const needsConfirmation = ref(false)
+const pendingEmail = ref('')
+const isResending = ref(false)
+
 // 输入框焦点状态
 const emailFocused = ref(false)
 const passwordFocused = ref(false)
@@ -22,6 +29,23 @@ const usernameFocused = ref(false)
 
 // 密码可见性
 const showPassword = ref(false)
+
+// 登录后要回到的页面（由路由守卫写入）
+const redirectTarget = computed(() => {
+  const r = route.query.redirect
+  return typeof r === 'string' && r.startsWith('/') ? r : '/'
+})
+
+// 一旦变成已登录（包括点邮件确认链接回跳后的自动登录）就离开登录页
+watch(
+  () => userStore.isLoggedIn,
+  (loggedIn) => {
+    if (loggedIn && route.path === '/login') {
+      router.replace(redirectTarget.value)
+    }
+  },
+  { immediate: true },
+)
 
 // 表单验证
 const isEmailValid = computed(() => {
@@ -44,6 +68,15 @@ const isFormValid = computed(() => {
   }
 })
 
+const showError = (message: string) => {
+  errorMessage.value = message
+  toast.error(message, {
+    theme: 'auto',
+    transition: 'slide',
+    dangerouslyHTMLString: true,
+  })
+}
+
 const handleSubmit = async () => {
   errorMessage.value = ''
   successMessage.value = ''
@@ -57,15 +90,18 @@ const handleSubmit = async () => {
 
   try {
     if (isLogin.value) {
-      // 登录
+      // ---------- 登录 ----------
       const { error } = await userStore.login(email.value, password.value)
+
       if (error) {
-        errorMessage.value = error instanceof Error ? error.message : '登录失败，请检查邮箱和密码'
-        toast.error('登录失败，请检查邮箱和密码', {
-          theme: 'auto',
-          transition: 'slide',
-          dangerouslyHTMLString: true,
-        })
+        const info = describeAuthError(error)
+        showError(info.message)
+
+        // 邮箱未验证：引导用户去验证 / 重发
+        if (info.needsConfirmation) {
+          needsConfirmation.value = true
+          pendingEmail.value = email.value
+        }
         return
       }
 
@@ -75,48 +111,86 @@ const handleSubmit = async () => {
         transition: 'slide',
         dangerouslyHTMLString: true,
       })
-      setTimeout(() => {
-        router.push('/')
-      }, 1000)
+      // watch 会在 isLoggedIn 变化时自动跳转，这里无需手动 push
     } else {
-      // 注册
-      const { error } = await userStore.register(
+      // ---------- 注册 ----------
+      const { error, needsConfirmation: needConfirm } = await userStore.register(
         email.value,
         password.value,
         username.value || undefined,
       )
 
       if (error) {
-        errorMessage.value = error instanceof Error ? error.message : '注册失败，请重试'
+        showError(describeAuthError(error).message)
         return
       }
 
-      successMessage.value = '注册成功！正在跳转...'
-      toast.success('注册成功! 请前往邮箱进行验证', {
+      if (needConfirm) {
+        // 开启邮箱确认：用户尚未登录，**不能跳转**
+        needsConfirmation.value = true
+        pendingEmail.value = email.value
+        toast.success('注册成功！请查收验证邮件', {
+          theme: 'auto',
+          transition: 'slide',
+          dangerouslyHTMLString: true,
+        })
+        return
+      }
+
+      // 未开启邮箱确认：已直接登录
+      toast.success('注册成功!', {
         theme: 'auto',
         transition: 'slide',
         dangerouslyHTMLString: true,
       })
-      setTimeout(() => {
-        router.push('/')
-      }, 2000)
     }
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '操作失败，请重试'
-    toast.error('操作失败', {
+    showError(describeAuthError(error).message)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+/** 重发验证邮件 */
+const handleResend = async () => {
+  const target = pendingEmail.value || email.value
+  if (!target) {
+    showError('请先填写邮箱地址')
+    return
+  }
+
+  isResending.value = true
+  errorMessage.value = ''
+  try {
+    const { error } = await userStore.resendConfirmation(target)
+    if (error) {
+      showError(describeAuthError(error).message)
+      return
+    }
+    successMessage.value = `验证邮件已重新发送至 ${target}`
+    toast.success('验证邮件已重新发送', {
       theme: 'auto',
       transition: 'slide',
       dangerouslyHTMLString: true,
     })
   } finally {
-    isLoading.value = false
+    isResending.value = false
   }
+}
+
+/** 从「等待验证」状态返回表单 */
+const backToForm = () => {
+  needsConfirmation.value = false
+  errorMessage.value = ''
+  successMessage.value = ''
+  isLogin.value = true
 }
 
 const toggleMode = () => {
   isLogin.value = !isLogin.value
   errorMessage.value = ''
   successMessage.value = ''
+  needsConfirmation.value = false
   email.value = ''
   password.value = ''
   username.value = ''
@@ -125,7 +199,7 @@ const toggleMode = () => {
 
 const handleGuestLogin = () => {
   userStore.loginAsGuest()
-  router.push('/')
+  router.replace(redirectTarget.value)
 }
 
 // 页面加载动画
@@ -181,6 +255,61 @@ onMounted(() => {
       <div
         class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-gray-100 transition-all duration-500 hover:shadow-3xl"
       >
+        <!-- ============ 等待邮箱验证 ============ -->
+        <div v-if="needsConfirmation" class="space-y-6 text-center animate-fade-in">
+          <div class="text-7xl animate-bounce">📧</div>
+
+          <div class="space-y-2">
+            <h2 class="text-2xl font-bold text-gray-800">请查收验证邮件</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">
+              我们已向<br />
+              <span class="font-semibold text-amber-600 break-all">{{ pendingEmail }}</span
+              ><br />
+              发送了一封验证邮件，点击邮件中的链接即可完成注册。
+            </p>
+          </div>
+
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-left space-y-1.5">
+            <p class="text-xs font-semibold text-amber-800">💡 没收到邮件？</p>
+            <p class="text-xs text-amber-700">· 先检查垃圾邮件 / 广告邮件文件夹</p>
+            <p class="text-xs text-amber-700">· 确认邮箱地址填写正确</p>
+            <p class="text-xs text-amber-700">· 邮件可能需要 1~2 分钟才能送达</p>
+          </div>
+
+          <div class="space-y-3">
+            <button
+              @click="handleResend"
+              :disabled="isResending"
+              class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold transition-all duration-300 shadow-lg hover:from-amber-600 hover:to-orange-600 hover:shadow-xl hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+            >
+              {{ isResending ? '发送中…' : '重新发送验证邮件' }}
+            </button>
+
+            <button
+              @click="backToForm"
+              class="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-all duration-300 active:scale-95"
+            >
+              返回登录
+            </button>
+          </div>
+
+          <!-- 重发结果 / 错误提示 -->
+          <div
+            v-if="errorMessage"
+            class="bg-red-50 border-l-4 border-red-500 p-3 rounded-lg text-left"
+          >
+            <p class="text-sm text-red-700">{{ errorMessage }}</p>
+          </div>
+          <div
+            v-if="successMessage"
+            class="bg-green-50 border-l-4 border-green-500 p-3 rounded-lg text-left"
+          >
+            <p class="text-sm text-green-700">{{ successMessage }}</p>
+          </div>
+        </div>
+
+        <!-- ============ 登录 / 注册表单 ============ -->
+        <template v-else>
         <Transition name="slide-fade" mode="out-in">
           <form
             :key="isLogin ? 'login' : 'register'"
@@ -396,6 +525,7 @@ onMounted(() => {
             游客模式（无需登录）
           </button>
         </div>
+        </template>
       </div>
     </div>
   </div>

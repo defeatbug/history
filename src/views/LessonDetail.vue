@@ -12,10 +12,23 @@ const userStore = useUserStore()
 const selectedAnswer = ref<number | null>(null)
 const showExplanation = ref(false)
 const startTime = ref<number>(Date.now())
+const notFound = ref(false)
 
-onMounted(() => {
+onMounted(async () => {
   const lessonId = route.params.id as string
-  lessonStore.setCurrentLesson(lessonId)
+
+  // 断点续学：若正是上次未完成的课程，则定位到断点位置
+  const resume = userStore.resumeTarget
+  const position = resume && resume.lessonId === lessonId ? resume.position : 0
+
+  const ok = await lessonStore.setCurrentLesson(lessonId, position)
+  if (!ok) {
+    notFound.value = true
+    return
+  }
+
+  // 记录本次进入课程的断点
+  await userStore.setResumePoint(lessonId, position)
   startTime.value = Date.now()
 })
 
@@ -31,6 +44,13 @@ const handleAnswer = (index: number) => {
   selectedAnswer.value = index
   lessonStore.submitAnswer(currentQuestion.value.id, index)
   showExplanation.value = true
+
+  // 异步写入答题记录（错题本 / 间隔重复的数据来源）；失败静默，不阻塞交互
+  void userStore.recordQuestionAnswer(
+    currentQuestion.value.id,
+    index,
+    index === currentQuestion.value.answer,
+  )
 }
 
 const handleNext = () => {
@@ -40,9 +60,14 @@ const handleNext = () => {
     lessonStore.nextQuestion()
     selectedAnswer.value = null
     showExplanation.value = false
+    // 保存断点，刷新后可继续
+    void userStore.setResumePoint(
+      lessonStore.currentLesson.id,
+      lessonStore.currentQuestionIndex,
+    )
   } else {
     // 完成课程
-    finishLesson()
+    void finishLesson()
   }
 }
 
@@ -50,20 +75,24 @@ const handlePrevious = () => {
   lessonStore.previousQuestion()
   const question = currentQuestion.value
   if (question) {
-    selectedAnswer.value = lessonStore.userAnswers[question.id] ?? null
+    selectedAnswer.value = lessonStore.getAnswer(question.id)
   }
   showExplanation.value = false
 }
 
-const finishLesson = () => {
+const finishLesson = async () => {
   if (!lessonStore.currentLesson) return
 
   const result = lessonStore.calculateResult()
   const studyTime = Math.floor((Date.now() - startTime.value) / 1000 / 60)
 
-  userStore.addStudyTime(studyTime)
-  userStore.updateCorrectRate(result.correct, result.total)
-  userStore.completeLesson(lessonStore.currentLesson.id)
+  // 一次性写入学习时长 / 正确率 / 完成状态，并触发服务端勋章判定
+  await userStore.finishLesson(
+    lessonStore.currentLesson.id,
+    result.correct,
+    result.total,
+    studyTime,
+  )
 
   lessonStore.setQuizCompleted(true)
 }
@@ -80,7 +109,34 @@ const isCorrect = computed(() => {
 </script>
 
 <template>
-  <div v-if="lessonStore.currentLesson" class="space-y-6">
+  <!-- 加载中 -->
+  <div
+    v-if="lessonStore.loading && !lessonStore.currentLesson"
+    class="flex flex-col items-center justify-center py-24 space-y-4"
+  >
+    <div
+      class="w-12 h-12 border-4 border-amber-200 border-t-amber-500 rounded-full animate-spin"
+    ></div>
+    <p class="text-gray-600">正在加载课程…</p>
+  </div>
+
+  <!-- 课程不存在 -->
+  <div
+    v-else-if="notFound"
+    class="bg-white rounded-2xl shadow-xl p-12 text-center space-y-6 max-w-lg mx-auto"
+  >
+    <div class="text-6xl">🔍</div>
+    <h2 class="text-2xl font-bold text-gray-800">未找到该课程</h2>
+    <p class="text-gray-600">课程可能已被删除，或链接有误。</p>
+    <button
+      @click="goToLessons"
+      class="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-semibold hover:from-amber-600 hover:to-orange-600 transition-all shadow-lg"
+    >
+      返回课程列表
+    </button>
+  </div>
+
+  <div v-else-if="lessonStore.currentLesson" class="space-y-6">
     <!-- 课程信息 -->
     <div
       class="bg-gradient-to-r from-white to-amber-50 rounded-2xl shadow-xl p-6 border border-amber-100"

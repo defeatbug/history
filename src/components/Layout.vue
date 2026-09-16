@@ -12,9 +12,15 @@ const isMenuOpen = ref(false)
 const isAIChatOpen = ref(false)
 
 const handleLogout = () => {
-  userStore.logout()
+  void userStore.logout()
   router.push('/login')
   isMenuOpen.value = false
+}
+
+/** 游客 → 去注册/登录 */
+const handleExitGuest = () => {
+  void userStore.logout()
+  router.push('/login')
 }
 
 const navigation = [
@@ -22,6 +28,7 @@ const navigation = [
   { name: '课程', path: '/lessons', routeName: 'Lessons' },
   { name: '历史学习', path: '/history-study', routeName: 'HistoryStudy' },
   { name: '学习路径', path: '/timeline', routeName: 'Timeline' },
+  { name: '错题本', path: '/wrong-answers', routeName: 'WrongAnswers' },
   { name: '博物馆', path: '/museums', routeName: 'Museums' },
   { name: '好友', path: '/friends', routeName: 'Friends' },
   { name: '勋章', path: '/badges', routeName: 'Badges' },
@@ -60,7 +67,7 @@ const isActive = (path: string, routeName?: string) => {
                 'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
                 isActive(item.path, item.routeName)
                   ? 'bg-amber-500 text-white'
-                  : 'text-gray-700 hover:bg-amber-100',
+                  : 'text-gray-700 hover:bg-black/[0.04]',
               ]"
             >
               {{ item.name }}
@@ -69,6 +76,15 @@ const isActive = (path: string, routeName?: string) => {
 
           <!-- 用户信息 -->
           <div class="flex items-center space-x-4">
+            <!-- 管理入口：仅管理员可见（真正的权限边界在数据库 RLS） -->
+            <router-link
+              v-if="userStore.isAdmin"
+              to="/admin"
+              class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#111827] text-white text-[13px] font-medium hover:bg-[#1f2937] transition-colors"
+            >
+              <span class="text-xs leading-none">◧</span>
+              <span>后台管理</span>
+            </router-link>
             <div v-if="userStore.isLoggedIn" class="hidden sm:flex items-center space-x-2">
               <span class="text-sm text-gray-600">{{ userStore.username }}</span>
               <div
@@ -121,7 +137,7 @@ const isActive = (path: string, routeName?: string) => {
               'block px-3 py-2 rounded-md text-base font-medium',
               isActive(item.path, item.routeName)
                 ? 'bg-amber-500 text-white'
-                : 'text-gray-700 hover:bg-amber-100',
+                : 'text-gray-700 hover:bg-black/[0.04]',
             ]"
           >
             {{ item.name }}
@@ -152,6 +168,26 @@ const isActive = (path: string, routeName?: string) => {
 
     <!-- 主内容区 -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <!-- 游客模式提示条：进度不会保存 -->
+      <div
+        v-if="userStore.userId === 'guest'"
+        class="mb-6 flex flex-col sm:flex-row sm:items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3"
+      >
+        <span class="text-2xl">👤</span>
+        <div class="flex-1">
+          <p class="text-sm font-semibold text-amber-900">你正在以游客身份浏览</p>
+          <p class="text-xs text-amber-700 mt-0.5">
+            学习进度不会保存，刷新页面后会重置。注册账号即可自动保存进度。
+          </p>
+        </div>
+        <button
+          @click="handleExitGuest"
+          class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold hover:bg-amber-600 transition-colors whitespace-nowrap"
+        >
+          注册 / 登录
+        </button>
+      </div>
+
       <RouterView />
     </main>
 
