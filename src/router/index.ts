@@ -17,6 +17,8 @@ import Review from '@/views/Review.vue'
 import AdminLayout from '@/views/admin/AdminLayout.vue'
 import AdminCourses from '@/views/admin/AdminCourses.vue'
 import AdminCourseEdit from '@/views/admin/AdminCourseEdit.vue'
+import AdminQuestions from '@/views/admin/AdminQuestions.vue'
+import AdminQuestionEdit from '@/views/admin/AdminQuestionEdit.vue'
 import AdminPlaceholder from '@/views/admin/AdminPlaceholder.vue'
 import { useUserStore } from '@/stores/user'
 
@@ -61,7 +63,17 @@ const router = createRouter({
         { path: 'courses', name: 'AdminCourses', component: AdminCourses },
         { path: 'courses/new', name: 'AdminCourseNew', component: AdminCourseEdit },
         { path: 'courses/:id', name: 'AdminCourseEdit', component: AdminCourseEdit },
-        { path: 'courses/:id/questions', name: 'AdminQuestions', component: AdminPlaceholder },
+        { path: 'courses/:id/questions', name: 'AdminQuestions', component: AdminQuestions },
+        {
+          path: 'courses/:id/questions/new',
+          name: 'AdminQuestionNew',
+          component: AdminQuestionEdit,
+        },
+        {
+          path: 'courses/:id/questions/:questionId',
+          name: 'AdminQuestionEdit',
+          component: AdminQuestionEdit,
+        },
         { path: 'events', name: 'AdminEvents', component: AdminPlaceholder },
         { path: 'museums', name: 'AdminMuseums', component: AdminPlaceholder },
         { path: 'artifacts', name: 'AdminArtifacts', component: AdminPlaceholder },

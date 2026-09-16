@@ -378,3 +378,232 @@ export async function deleteCourse(
     return { ok: false, error: message }
   }
 }
+
+// ---------------------------------------------------------------------------
+// 题目 CRUD
+//
+// 题型策略：后台固定为单选题（multiple_choice）。
+// 原因：前端 LessonDetail 目前只会把题目渲染成单选，
+// 若后台允许配「填空 / 情境 / 连线」，管理员配了也显示不出来 ——
+// 这与 badges 只读是同一个判断：不做前端支撑不了的能力。
+// ---------------------------------------------------------------------------
+
+export interface AdminQuestion {
+  id: string
+  courseId: string
+  content: string
+  options: string[]
+  /** 正确答案索引（单选） */
+  answer: number
+  explanation: string | null
+  sortOrder: number
+}
+
+export interface QuestionFormData {
+  content: string
+  options: string[]
+  answer: number
+  explanation: string
+}
+
+interface QuestionRow {
+  id: string
+  course_id: string
+  content: string
+  type: string
+  options: unknown
+  answer: unknown
+  explanation: string | null
+  sort_order: number | null
+}
+
+function mapQuestion(row: QuestionRow): AdminQuestion {
+  return {
+    id: row.id,
+    courseId: row.course_id,
+    content: row.content,
+    options: Array.isArray(row.options) ? (row.options as string[]) : [],
+    answer: typeof row.answer === 'number' ? row.answer : Number(row.answer ?? 0),
+    explanation: row.explanation,
+    sortOrder: row.sort_order ?? 0,
+  }
+}
+
+/** 读取某门课的全部题目，按 sort_order 排列 */
+export async function fetchAdminQuestions(
+  userId: string,
+  courseId: string,
+): Promise<AdminFetchResult<AdminQuestion[]>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) {
+    return { data: [], error: '尚未登录或未配置 Supabase' }
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('questions')
+      .select('*')
+      .eq('course_id', courseId)
+      .order('sort_order', { ascending: true })
+
+    if (error) throw error
+    return { data: (data ?? []).map((r) => mapQuestion(r as unknown as QuestionRow)) }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取题目失败：', message)
+    return { data: [], error: message }
+  }
+}
+
+/** 读取单道题目 */
+export async function fetchAdminQuestion(
+  userId: string,
+  id: string,
+): Promise<AdminFetchResult<AdminQuestion | null>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) {
+    return { data: null, error: '尚未登录或未配置 Supabase' }
+  }
+
+  try {
+    const { data, error } = await supabase.from('questions').select('*').eq('id', id).maybeSingle()
+    if (error) throw error
+    return { data: data ? mapQuestion(data as unknown as QuestionRow) : null }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取题目失败：', message)
+    return { data: null, error: message }
+  }
+}
+
+/**
+ * 生成下一道题的 id。
+ *
+ * 现有数据用 `q<课程号>-<题号>` 的形式（如 q1-3），这里沿用同一约定，
+ * 保持主键可读，便于在数据库里直接看懂某题属于哪门课。
+ */
+export async function generateQuestionId(courseId: string): Promise<string> {
+  const courseNum = /^lesson-(\d+)$/.exec(courseId)?.[1] ?? courseId
+
+  try {
+    const { data } = await supabase.from('questions').select('id').eq('course_id', courseId)
+    const maxN = (data ?? []).reduce((max, row) => {
+      const m = /^q\d+-(\d+)$/.exec(row.id)
+      return m ? Math.max(max, Number(m[1])) : max
+    }, 0)
+    return `q${courseNum}-${maxN + 1}`
+  } catch {
+    return `q${courseNum}-${Date.now().toString(36)}`
+  }
+}
+
+function toQuestionRow(data: QuestionFormData) {
+  return {
+    content: data.content.trim(),
+    // 固定单选；题型字段保留以兼容既有数据
+    type: 'multiple_choice' as const,
+    options: data.options.map((o) => o.trim()).filter((o) => o.length > 0),
+    answer: data.answer,
+    explanation: data.explanation.trim() || null,
+  }
+}
+
+/** 新建题目 */
+export async function createQuestion(
+  courseId: string,
+  data: QuestionFormData,
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  try {
+    const id = await generateQuestionId(courseId)
+
+    const { data: existing } = await supabase
+      .from('questions')
+      .select('sort_order')
+      .eq('course_id', courseId)
+    const nextOrder = (existing ?? []).reduce((max, r) => Math.max(max, r.sort_order ?? 0), -1) + 1
+
+    const { error } = await supabase
+      .from('questions')
+      .insert({ id, course_id: courseId, ...toQuestionRow(data), sort_order: nextOrder })
+
+    if (error) throw error
+    return { ok: true, id }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 新建题目失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 更新题目（不改 sort_order，顺序由列表拖拽负责） */
+export async function updateQuestion(
+  id: string,
+  data: QuestionFormData,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from('questions').update(toQuestionRow(data)).eq('id', id)
+    if (error) throw error
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 更新题目失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 更新题目排序 */
+export async function updateQuestionOrder(
+  orders: Array<{ id: string; sortOrder: number }>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    for (const { id, sortOrder } of orders) {
+      const { error } = await supabase.from('questions').update({ sort_order: sortOrder }).eq('id', id)
+      if (error) throw error
+    }
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 更新题目排序失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/**
+ * 删除题目。
+ *
+ * 与删除课程一样，外键 CASCADE 会连带删除学生在这道题上的答题记录
+ * （含错题本条目与 SM-2 复习状态），因此调用方必须先展示影响面。
+ */
+export async function deleteQuestion(id: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from('questions').delete().eq('id', id)
+    if (error) throw error
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 删除题目失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 统计某道题的作答影响面（多少学生答过、答错几次） */
+export async function fetchQuestionImpact(
+  questionId: string,
+): Promise<{ answered: number; wrong: number; error?: string }> {
+  try {
+    const { data, error } = await supabase
+      .from('user_answers')
+      .select('is_correct, wrong_count')
+      .eq('question_id', questionId)
+
+    if (error) throw error
+
+    const rows = data ?? []
+    return {
+      answered: rows.length,
+      wrong: rows.filter((r) => (r.wrong_count ?? 0) > 0).length,
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取题目影响面失败：', message)
+    return { answered: 0, wrong: 0, error: message }
+  }
+}
