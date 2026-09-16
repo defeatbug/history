@@ -36,3 +36,22 @@ coverage
 
 # Vitest
 __screenshots__/
+
+# 合并 SQL（本地生成，用于 Dashboard 手动执行）
+supabase/bundle.sql
+
+# Supabase CLI 本地状态（含项目链接信息，不应提交）
+supabase/.temp/
+
+# ---------------------------------------------------------------------------
+# 本地工具与流程产物（不该进仓库）
+# ---------------------------------------------------------------------------
+
+# Impeccable 设计技能（含 12MB 平台二进制，各人自行安装）
+.pi/
+
+# 设计流程的会话产物（截图与决策页日志，可重新生成）
+# 注意：.impeccable/surfaces/ 里的方向契约要提交，因此只忽略这两项
+.impeccable/review/
+.impeccable/questions/
+
