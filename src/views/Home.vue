@@ -202,7 +202,7 @@ onMounted(() => {
         <div
           v-for="lesson in recentLessons"
           :key="lesson.id"
-          class="group relative bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all cursor-pointer transform hover:-translate-y-2 border border-gray-100"
+          class="group relative flex flex-col bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all cursor-pointer transform hover:-translate-y-2 border border-gray-100"
           @click="startLearning(lesson.id)"
         >
           <!-- 渐变背景 -->
@@ -210,7 +210,7 @@ onMounted(() => {
             class="absolute inset-0 bg-gradient-to-br from-amber-50/50 to-orange-50/50 opacity-0 group-hover:opacity-100 transition-opacity"
           ></div>
 
-          <div class="relative p-6">
+          <div class="relative p-6 flex-1 flex flex-col">
             <div class="flex items-start justify-between mb-4">
               <div class="text-6xl transform group-hover:scale-110 transition-transform">
                 {{ lesson.coverImage || '📖' }}
@@ -240,7 +240,8 @@ onMounted(() => {
               {{ lesson.title }}
             </h3>
             <p class="text-gray-600 text-sm mb-4 line-clamp-2">{{ lesson.description }}</p>
-            <div class="space-y-2 pt-4 border-t border-gray-100">
+            <!-- mt-auto：元信息区块推到底部，描述行数不同也能对齐 -->
+            <div class="space-y-2 mt-auto pt-4 border-t border-gray-100">
               <div class="flex items-center justify-between text-sm">
                 <span class="text-gray-500 flex items-center gap-1">📅</span>
                 <span class="text-gray-700 font-medium">{{ lesson.period }}</span>

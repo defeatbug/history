@@ -57,7 +57,7 @@ const goToMuseum = (museumId: string) => {
       <div
         v-for="museum in filteredMuseums"
         :key="museum.id"
-        class="group relative bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all cursor-pointer transform hover:-translate-y-2 border border-gray-100"
+        class="group relative flex flex-col bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all cursor-pointer transform hover:-translate-y-2 border border-gray-100"
         @click="goToMuseum(museum.id)"
       >
         <!-- 渐变背景 -->
@@ -65,7 +65,7 @@ const goToMuseum = (museumId: string) => {
           class="absolute inset-0 bg-gradient-to-br from-amber-50/50 to-orange-50/50 opacity-0 group-hover:opacity-100 transition-opacity"
         ></div>
 
-        <div class="relative p-6">
+        <div class="relative p-6 flex-1 flex flex-col">
           <div class="flex items-start justify-between mb-4">
             <div class="text-7xl transform group-hover:scale-110 transition-transform">
               {{ museum.coverImage }}
@@ -86,7 +86,8 @@ const goToMuseum = (museumId: string) => {
             {{ museum.description }}
           </p>
 
-          <div class="space-y-2 mb-5 pb-5 border-b border-gray-100">
+          <!-- mt-auto：元信息 + 分隔线 + 按钮一起推到底部，卡片底部对齐 -->
+          <div class="space-y-2 mt-auto mb-5 pb-5 border-b border-gray-100">
             <div class="flex items-center text-sm text-gray-600">
               <span class="mr-2 text-base">📍</span>
               <span class="font-medium">{{ museum.location }}</span>

@@ -62,7 +62,7 @@ const handleViewDetail = () => {
 
 <template>
   <div
-    class="history-card relative bg-white rounded-2xl shadow-lg overflow-hidden transition-all duration-500 hover:shadow-2xl transform hover:-translate-y-2"
+    class="history-card relative flex flex-col bg-white rounded-2xl shadow-lg overflow-hidden transition-all duration-500 hover:shadow-2xl transform hover:-translate-y-2"
     :class="cardBorderClass"
     @mouseenter="isHovered = true"
     @mouseleave="isHovered = false"
@@ -105,15 +105,16 @@ const handleViewDetail = () => {
       </div>
     </div>
 
-    <!-- 卡片内容 -->
-    <div class="p-6">
+    <!-- 卡片内容：flex-1 撑满剩余高度，使「查看详情」按钮在不同卡片上对齐 -->
+    <div class="p-6 flex-1 flex flex-col">
       <!-- 简介 -->
       <p class="text-gray-700 mb-4 line-clamp-2">
         {{ event.description }}
       </p>
 
-      <!-- 关键词 -->
-      <div class="flex flex-wrap gap-2 mb-4">
+      <!-- 关键词。mt-auto 把「关键词 + 按钮」整体推到底部：
+           描述 1 行或 2 行时，按钮位置都一致 -->
+      <div class="flex flex-wrap gap-2 mt-auto mb-4">
         <span
           v-for="keyword in event.keywords.slice(0, 4)"
           :key="keyword"
