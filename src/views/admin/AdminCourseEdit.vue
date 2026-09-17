@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { toast } from 'vue3-toastify'
 import { useUserStore } from '@/stores/user'
+import MediaUploader from '@/components/admin/MediaUploader.vue'
 import {
   fetchAdminCourse,
   createCourse,
@@ -357,72 +358,40 @@ onMounted(load)
           <div class="flex items-center gap-2">
             <h2 class="text-[13px] font-semibold text-[#6b7280]">封面</h2>
             <span class="text-[11.5px] text-[#9ca3af]">
-              未上传图片时，学习端会显示这里选的图标
+              上传图片后优先显示图片；未上传时回退到下面的图标
             </span>
           </div>
 
-          <div class="flex items-start gap-4">
-            <!-- 预览 -->
-            <div
-              class="w-16 h-16 rounded-xl bg-[#f9fafb] border border-black/[0.06] flex items-center justify-center text-[28px] overflow-hidden flex-shrink-0"
-            >
-              <img
-                v-if="form.coverUrl"
-                :src="form.coverUrl"
-                alt="封面预览"
-                class="w-full h-full object-cover"
-              />
-              <span v-else>{{ form.coverImage || '📖' }}</span>
-            </div>
+          <MediaUploader
+            v-model="form.coverUrl"
+            folder="covers/courses"
+            :emoji-fallback="form.coverImage"
+            preview-class="w-24 h-24"
+          />
 
-            <div class="flex-1 space-y-3 min-w-0">
-              <!-- emoji 选择 -->
-              <div>
-                <label class="block text-[12px] font-medium mb-1.5 text-[#6b7280]">
-                  图标（emoji）
-                </label>
-                <div class="flex flex-wrap gap-1.5">
-                  <button
-                    v-for="e in EMOJI_CHOICES"
-                    :key="e"
-                    :class="[
-                      'w-8 h-8 rounded-lg text-[16px] flex items-center justify-center transition-colors',
-                      form.coverImage === e
-                        ? 'bg-amber-100 ring-2 ring-amber-400'
-                        : 'bg-[#f9fafb] hover:bg-black/[0.04]',
-                    ]"
-                    @click="form.coverImage = e"
-                  >
-                    {{ e }}
-                  </button>
-                </div>
-              </div>
-
-              <!-- 图片 URL（上传功能随后接入） -->
-              <div>
-                <label class="block text-[12px] font-medium mb-1.5 text-[#6b7280]">
-                  封面图片 URL
-                </label>
-                <div class="flex gap-2">
-                  <input
-                    v-model="form.coverUrl"
-                    type="text"
-                    placeholder="留空则使用上面的 emoji"
-                    class="flex-1 min-w-0 h-9 px-3 rounded-lg border border-black/[0.08] text-[12.5px] outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all"
-                  />
-                  <button
-                    v-if="form.coverUrl"
-                    class="h-9 px-3 rounded-lg bg-white border border-black/[0.07] text-[12.5px] text-[#6b7280] hover:bg-black/[0.02]"
-                    @click="form.coverUrl = null"
-                  >
-                    清除
-                  </button>
-                </div>
-                <p class="mt-1 text-[11px] text-[#9ca3af]">
-                  图片上传功能随后接入；当前可直接粘贴图片地址
-                </p>
-              </div>
+          <div class="pt-4 border-t border-black/[0.05]">
+            <label class="block text-[12px] font-medium mb-1.5 text-[#6b7280]">
+              图标（emoji）—— 降级显示
+            </label>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                v-for="e in EMOJI_CHOICES"
+                :key="e"
+                :class="[
+                  'w-8 h-8 rounded-lg text-[16px] flex items-center justify-center transition-colors',
+                  form.coverImage === e
+                    ? 'bg-amber-100 ring-2 ring-amber-400'
+                    : 'bg-[#f9fafb] hover:bg-black/[0.04]',
+                ]"
+                @click="form.coverImage = e"
+              >
+                {{ e }}
+              </button>
             </div>
+            <p class="mt-2 text-[11px] text-[#9ca3af] leading-relaxed">
+              学习端在图片加载失败或未设置时显示这个图标，
+              因此即使上传了图片，也建议选一个语义接近的 emoji。
+            </p>
           </div>
         </section>
       </div>
