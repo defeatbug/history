@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { toast } from 'vue3-toastify'
 import { useLessonStore } from '../stores/lesson'
 import { useUserStore } from '../stores/user'
 
@@ -13,6 +14,29 @@ const selectedAnswer = ref<number | null>(null)
 const showExplanation = ref(false)
 const startTime = ref<number>(Date.now())
 const notFound = ref(false)
+
+/**
+ * 保存失败的提示。
+ *
+ * 答题记录是「后台写入」—— 不阻塞答题流程，失败了用户原本不会知道。
+ * 但对学习者来说「答完了却没记上」是很实际的问题，因此一旦写入失败
+ * 就在页面上给出明确提示，而不是静默丢弃。
+ *
+ * 用「只提示一次」的策略：网络持续不通时，逐题弹窗会把界面刷爆。
+ */
+const saveFailed = ref(false)
+
+function reportSaveFailure(action: string, result: { ok: boolean; error?: string }) {
+  if (result.ok) return
+  console.warn(`[LessonDetail] ${action}失败：`, result.error)
+  if (saveFailed.value) return
+  saveFailed.value = true
+  toast.warn('学习记录暂时无法保存，请检查网络后重试', {
+    theme: 'auto',
+    transition: 'slide',
+    autoClose: 6000,
+  })
+}
 
 onMounted(async () => {
   const lessonId = route.params.id as string
@@ -45,12 +69,11 @@ const handleAnswer = (index: number) => {
   lessonStore.submitAnswer(currentQuestion.value.id, index)
   showExplanation.value = true
 
-  // 异步写入答题记录（错题本 / 间隔重复的数据来源）；失败静默，不阻塞交互
-  void userStore.recordQuestionAnswer(
-    currentQuestion.value.id,
-    index,
-    index === currentQuestion.value.answer,
-  )
+  // 异步写入答题记录（错题本 / 间隔重复的数据来源）。
+  // 不阻塞交互，但**失败必须让用户知道** —— 否则「答完没记录」无人察觉。
+  void userStore
+    .recordQuestionAnswer(currentQuestion.value.id, index, index === currentQuestion.value.answer)
+    .then((r) => reportSaveFailure('保存答题记录', r))
 }
 
 const handleNext = () => {
@@ -60,7 +83,7 @@ const handleNext = () => {
     lessonStore.nextQuestion()
     selectedAnswer.value = null
     showExplanation.value = false
-    // 保存断点，刷新后可继续
+    // 保存断点，刷新后可继续（失败只记录，不打断答题）
     void userStore.setResumePoint(
       lessonStore.currentLesson.id,
       lessonStore.currentQuestionIndex,
@@ -95,6 +118,17 @@ const finishLesson = async () => {
   )
 
   lessonStore.setQuizCompleted(true)
+
+  // 收尾写入失败时给出更强提示：这一条丢了，整门课的进度都不算数
+  if (!userStore.canSync) {
+    toast.info('当前处于游客模式，学习记录不会保存', { theme: 'auto', transition: 'slide' })
+  } else if (saveFailed.value) {
+    toast.error('本门课的学习记录未能保存，请检查网络', {
+      theme: 'auto',
+      transition: 'slide',
+      autoClose: 8000,
+    })
+  }
 }
 
 const goToLessons = () => {
@@ -231,6 +265,21 @@ const isCorrect = computed(() => {
           >
             <div class="absolute inset-0 bg-white/30 animate-pulse"></div>
           </div>
+        </div>
+      </div>
+
+      <!-- 保存失败横幅：toast 会自动消失，横幅持续提醒直到刷新 -->
+      <div
+        v-if="saveFailed"
+        class="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4"
+      >
+        <span class="text-xl leading-none">⚠️</span>
+        <div class="min-w-0">
+          <p class="text-sm font-semibold text-amber-900">学习记录暂时无法保存</p>
+          <p class="text-xs text-amber-700 mt-0.5 leading-relaxed">
+            答题可以继续，但错题本与你现在的进度不会同步到云端。
+            请检查网络后刷新页面重试。
+          </p>
         </div>
       </div>
 

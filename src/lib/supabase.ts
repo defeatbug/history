@@ -20,6 +20,29 @@ if (!isSupabaseConfigured) {
   )
 }
 
+/**
+ * 单个请求的超时时间（毫秒）。
+ *
+ * 为什么必须设：supabase-js 默认不给请求设超时，于是「网络卡住」会变成
+ * 「永久等待」—— 界面停在转圈态，用户不知道是在加载还是已经失败。
+ * 这在使用不稳定代理的环境下尤其明显。
+ *
+ * 超时后请求会以 AbortError 失败，从而走正常的错误分支，
+ * 让界面显示「加载失败」而不是无限加载。
+ */
+const REQUEST_TIMEOUT_MS = 25_000
+
+/**
+ * 带超时的 fetch。
+ *
+ * 注意：调用方自带 signal 时不覆盖 —— 上层主动取消（如组件卸载）的语义
+ * 比超时更重要。
+ */
+const fetchWithTimeout: typeof fetch = (input, init) => {
+  if (init?.signal) return fetch(input, init)
+  return fetch(input, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+}
+
 // createClient 在收到空值时会在模块加载阶段直接抛错（"supabaseUrl is required"），
 // 导致整个应用白屏。这里填入占位值让客户端能正常构造——由于 isSupabaseConfigured
 // 为 false，业务层不会发出任何真实请求。
@@ -39,5 +62,14 @@ export const supabase = createClient<Database>(
       persistSession: true,
       detectSessionInUrl: true,
     },
+    global: {
+      fetch: fetchWithTimeout,
+    },
   },
 )
+
+/** 判断一个错误是否由请求超时引起，便于界面给出更准确的说法 */
+export function isTimeoutError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return /timeout|aborted|AbortError/i.test(message)
+}
