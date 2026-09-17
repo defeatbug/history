@@ -133,3 +133,13 @@ begin
     create role service_role nologin;
   end if;
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- auth.uid() 的执行权限
+--
+-- 真实 Supabase 会把 auth schema 的 usage 与 auth.uid() 的 execute
+-- 授予 anon / authenticated。本地桩必须一并模拟，
+-- 否则 security_invoker 视图里的 auth.uid() 会报“permission denied for schema auth”。
+-- ---------------------------------------------------------------------------
+grant usage on schema auth to anon, authenticated, service_role;
+grant execute on function auth.uid() to anon, authenticated, service_role;
