@@ -244,6 +244,29 @@ export type StudentProgressViewRow = {
   correct_count: number
   badge_count: number
 }
+
+/** 按天聚合的答题统计（P2-5 新增）：一天一行 */
+export type DailyAnswerStatsRow = {
+  day: string
+  answer_count: number
+  active_students: number
+  correct_count: number
+  wrong_count: number
+}
+
+/** 学生整体概览（P2-5 新增）：单行汇总 */
+export type StudentOverviewViewRow = {
+  total_students: number
+  active_students: number
+  progressing_students: number
+  avg_completed: number | string
+  avg_study_minutes: number | string
+  avg_correct_rate: number | string
+  /** 参与正确率平均的学生数（仅统计答过题的人） */
+  correct_rate_sample_size: number
+  total_answers: number
+  total_wrong: number
+}
 // ---------------------------------------------------------------------------
 // Database 根类型（供 createClient<Database> 使用）
 // ---------------------------------------------------------------------------
@@ -269,6 +292,8 @@ export interface Database {
       wrong_answers_view: View<WrongAnswerViewRow>
       course_admin_view: View<CourseAdminViewRow>
       student_progress_view: View<StudentProgressViewRow>
+      daily_answer_stats: View<DailyAnswerStatsRow>
+      student_overview_view: View<StudentOverviewViewRow>
     }
     Functions: {
       is_admin: {

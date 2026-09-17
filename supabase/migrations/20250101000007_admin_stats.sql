@@ -80,7 +80,10 @@ create trigger trg_cleanup_completed_lesson
 --    security_invoker：视图按调用者权限执行，自动继承底层表的 RLS
 --    （学生调用时只能看到自己那一行，管理员能看到全部）。
 -- ---------------------------------------------------------------------------
-drop view if exists public.student_progress_view;
+-- 加 cascade：迁移 09 的 student_overview_view 建立在本视图之上。
+-- 重跑整套迁移时，若不用 cascade，drop 会因依赖而失败。
+-- 这是安全的：依赖方在同一个 bundle 的后续迁移里会被重建。
+drop view if exists public.student_progress_view cascade;
 
 create view public.student_progress_view
 with (security_invoker = true)

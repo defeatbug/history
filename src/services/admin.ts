@@ -607,3 +607,208 @@ export async function fetchQuestionImpact(
     return { answered: 0, wrong: 0, error: message }
   }
 }
+
+// ---------------------------------------------------------------------------
+// 学习统计
+//
+// 隐私边界（PRODUCT.md 已确认）：后台只展示用户名，不展示邮箱等 PII；
+// 且这一块**只读**，不提供任何修改学生数据或角色的入口。
+// ---------------------------------------------------------------------------
+
+export interface StudentSummary {
+  userId: string
+  username: string
+  completedCount: number
+  totalStudyTime: number
+  correctRate: number
+  currentStreak: number
+  lastStudiedAt: string | null
+  answeredCount: number
+  wrongCount: number
+  correctCount: number
+  badgeCount: number
+}
+
+export interface StudentOverview {
+  totalStudents: number
+  activeStudents: number
+  progressingStudents: number
+  avgCompleted: number
+  avgStudyMinutes: number
+  avgCorrectRate: number
+  /** 参与正确率平均的人数；为 0 时正确率无意义，UI 应显示占位符 */
+  correctRateSampleSize: number
+  totalAnswers: number
+  totalWrong: number
+}
+
+export interface DailyActivity {
+  day: string
+  answerCount: number
+  activeStudents: number
+  correctCount: number
+  wrongCount: number
+}
+
+interface StudentProgressRow {
+  user_id: string
+  username: string
+  completed_count: number | null
+  total_study_time: number | null
+  correct_rate: number | string | null
+  current_streak: number | null
+  last_studied_at: string | null
+  answered_count: number | null
+  wrong_count: number | null
+  correct_count: number | null
+  badge_count: number | null
+}
+
+/** 读取学生列表（一行一个学生），按用户名排序 */
+export async function fetchStudents(
+  userId: string,
+): Promise<AdminFetchResult<StudentSummary[]>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) {
+    return { data: [], error: '尚未登录或未配置 Supabase' }
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('student_progress_view')
+      .select('*')
+      .order('username', { ascending: true })
+
+    if (error) throw error
+
+    return {
+      data: (data ?? []).map((r) => {
+        const row = r as unknown as StudentProgressRow
+        return {
+          userId: row.user_id,
+          username: row.username,
+          completedCount: row.completed_count ?? 0,
+          totalStudyTime: row.total_study_time ?? 0,
+          correctRate: Number(row.correct_rate ?? 0),
+          currentStreak: row.current_streak ?? 0,
+          lastStudiedAt: row.last_studied_at,
+          answeredCount: row.answered_count ?? 0,
+          wrongCount: row.wrong_count ?? 0,
+          correctCount: row.correct_count ?? 0,
+          badgeCount: row.badge_count ?? 0,
+        }
+      }),
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取学生列表失败：', message)
+    return { data: [], error: message }
+  }
+}
+
+/** 读取学生整体概览 */
+export async function fetchStudentOverview(
+  userId: string,
+): Promise<AdminFetchResult<StudentOverview>> {
+  const empty: StudentOverview = {
+    totalStudents: 0,
+    activeStudents: 0,
+    progressingStudents: 0,
+    avgCompleted: 0,
+    avgStudyMinutes: 0,
+    avgCorrectRate: 0,
+    correctRateSampleSize: 0,
+    totalAnswers: 0,
+    totalWrong: 0,
+  }
+
+  if (!isSupabaseConfigured || !canPersist(userId)) return { data: empty }
+
+  try {
+    const { data, error } = await supabase.from('student_overview_view').select('*').maybeSingle()
+    if (error) throw error
+    if (!data) return { data: empty }
+
+    const row = data as unknown as Record<string, number | string | null>
+    return {
+      data: {
+        totalStudents: Number(row.total_students ?? 0),
+        activeStudents: Number(row.active_students ?? 0),
+        progressingStudents: Number(row.progressing_students ?? 0),
+        avgCompleted: Number(row.avg_completed ?? 0),
+        avgStudyMinutes: Number(row.avg_study_minutes ?? 0),
+        avgCorrectRate: Number(row.avg_correct_rate ?? 0),
+        correctRateSampleSize: Number(row.correct_rate_sample_size ?? 0),
+        totalAnswers: Number(row.total_answers ?? 0),
+        totalWrong: Number(row.total_wrong ?? 0),
+      },
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取学生概览失败：', message)
+    return { data: empty, error: message }
+  }
+}
+
+/**
+ * 读取近 N 天的答题活跃度。
+ * 数据库已按天聚合，因此无论总答题量多少，这里最多只拉 N 行。
+ */
+export async function fetchDailyActivity(
+  userId: string,
+  days = 14,
+): Promise<AdminFetchResult<DailyActivity[]>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) return { data: [] }
+
+  try {
+    const since = new Date()
+    since.setDate(since.getDate() - (days - 1))
+    const sinceIso = since.toISOString().slice(0, 10)
+
+    const { data, error } = await supabase
+      .from('daily_answer_stats')
+      .select('*')
+      .gte('day', sinceIso)
+      .order('day', { ascending: true })
+
+    if (error) throw error
+
+    const byDay = new Map(
+      (data ?? []).map((r) => {
+        const row = r as unknown as Record<string, number | string>
+        return [
+          String(row.day),
+          {
+            day: String(row.day),
+            answerCount: Number(row.answer_count ?? 0),
+            activeStudents: Number(row.active_students ?? 0),
+            correctCount: Number(row.correct_count ?? 0),
+            wrongCount: Number(row.wrong_count ?? 0),
+          },
+        ]
+      }),
+    )
+
+    // 补齐没有数据的日子，图表才不会断档
+    const series: DailyActivity[] = []
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const key = d.toISOString().slice(0, 10)
+      series.push(
+        byDay.get(key) ?? {
+          day: key,
+          answerCount: 0,
+          activeStudents: 0,
+          correctCount: 0,
+          wrongCount: 0,
+        },
+      )
+    }
+
+    return { data: series }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取活跃度失败：', message)
+    return { data: [], error: message }
+  }
+}

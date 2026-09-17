@@ -19,6 +19,7 @@ import AdminCourses from '@/views/admin/AdminCourses.vue'
 import AdminCourseEdit from '@/views/admin/AdminCourseEdit.vue'
 import AdminQuestions from '@/views/admin/AdminQuestions.vue'
 import AdminQuestionEdit from '@/views/admin/AdminQuestionEdit.vue'
+import AdminStudents from '@/views/admin/AdminStudents.vue'
 import AdminPlaceholder from '@/views/admin/AdminPlaceholder.vue'
 import { useUserStore } from '@/stores/user'
 
@@ -78,7 +79,7 @@ const router = createRouter({
         { path: 'museums', name: 'AdminMuseums', component: AdminPlaceholder },
         { path: 'artifacts', name: 'AdminArtifacts', component: AdminPlaceholder },
         { path: 'badges', name: 'AdminBadges', component: AdminPlaceholder },
-        { path: 'students', name: 'AdminStudents', component: AdminPlaceholder },
+        { path: 'students', name: 'AdminStudents', component: AdminStudents },
       ],
     },
     // 未匹配的路径回首页（避免白屏）
