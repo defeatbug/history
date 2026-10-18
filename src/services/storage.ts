@@ -15,6 +15,7 @@
  *   covers/courses/<uuid>.webp
  *   covers/museums/<uuid>.webp
  *   artifacts/<uuid>.webp
+ *   events/<uuid>.webp
  */
 
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
@@ -22,7 +23,7 @@ import { compressImage, extensionFor, formatBytes, ImageError } from '@/utils/im
 
 export const MEDIA_BUCKET = 'media'
 
-export type MediaFolder = 'covers/courses' | 'covers/museums' | 'artifacts'
+export type MediaFolder = 'covers/courses' | 'covers/museums' | 'artifacts' | 'events'
 
 export interface UploadResult {
   ok: boolean

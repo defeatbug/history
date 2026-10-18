@@ -35,12 +35,17 @@ const isActive = (path: string, exact = false) => {
 
 const backToApp = () => router.push('/')
 
-/** 「新建」按钮的目标随当前模块变化 */
-const newTarget = computed(() => {
+/**
+ * 「新建」按钮的目标随当前模块变化。
+ * 勋章 / 学习统计 / 概览没有「新建」语义，返回 null，
+ * 顶栏在 null 时隐藏新建按钮。
+ */
+const newTarget = computed<string | null>(() => {
+  if (route.path.startsWith('/admin/courses')) return '/admin/courses/new'
   if (route.path.startsWith('/admin/events')) return '/admin/events/new'
   if (route.path.startsWith('/admin/museums')) return '/admin/museums/new'
   if (route.path.startsWith('/admin/artifacts')) return '/admin/artifacts/new'
-  return '/admin/courses/new'
+  return null
 })
 
 const pageTitle = computed(() => {
@@ -173,8 +178,9 @@ const pageTitle = computed(() => {
               <span class="text-sm">◑</span>
             </button>
 
-            <!-- 主操作：深色胶囊 -->
+            <!-- 主操作：深色胶囊（无新建语义的模块不显示） -->
             <button
+              v-if="newTarget"
               class="h-9 px-4 rounded-lg bg-[#111827] text-white text-[13px] font-medium hover:bg-[#1f2937] transition-colors flex items-center gap-1.5"
               @click="router.push(newTarget)"
             >

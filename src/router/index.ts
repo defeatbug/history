@@ -15,12 +15,19 @@ import HistoryStudy from '@/views/HistoryStudy.vue'
 import WrongAnswers from '@/views/WrongAnswers.vue'
 import Review from '@/views/Review.vue'
 import AdminLayout from '@/views/admin/AdminLayout.vue'
+import AdminOverview from '@/views/admin/AdminOverview.vue'
 import AdminCourses from '@/views/admin/AdminCourses.vue'
 import AdminCourseEdit from '@/views/admin/AdminCourseEdit.vue'
 import AdminQuestions from '@/views/admin/AdminQuestions.vue'
 import AdminQuestionEdit from '@/views/admin/AdminQuestionEdit.vue'
+import AdminEvents from '@/views/admin/AdminEvents.vue'
+import AdminEventEdit from '@/views/admin/AdminEventEdit.vue'
+import AdminMuseums from '@/views/admin/AdminMuseums.vue'
+import AdminMuseumEdit from '@/views/admin/AdminMuseumEdit.vue'
+import AdminArtifacts from '@/views/admin/AdminArtifacts.vue'
+import AdminArtifactEdit from '@/views/admin/AdminArtifactEdit.vue'
+import AdminBadges from '@/views/admin/AdminBadges.vue'
 import AdminStudents from '@/views/admin/AdminStudents.vue'
-import AdminPlaceholder from '@/views/admin/AdminPlaceholder.vue'
 import { useUserStore } from '@/stores/user'
 
 const router = createRouter({
@@ -60,7 +67,7 @@ const router = createRouter({
       component: AdminLayout,
       meta: { requiresAuth: true, requiresAdmin: true },
       children: [
-        { path: '', name: 'AdminOverview', component: AdminPlaceholder },
+        { path: '', name: 'AdminOverview', component: AdminOverview },
         { path: 'courses', name: 'AdminCourses', component: AdminCourses },
         { path: 'courses/new', name: 'AdminCourseNew', component: AdminCourseEdit },
         { path: 'courses/:id', name: 'AdminCourseEdit', component: AdminCourseEdit },
@@ -75,10 +82,16 @@ const router = createRouter({
           name: 'AdminQuestionEdit',
           component: AdminQuestionEdit,
         },
-        { path: 'events', name: 'AdminEvents', component: AdminPlaceholder },
-        { path: 'museums', name: 'AdminMuseums', component: AdminPlaceholder },
-        { path: 'artifacts', name: 'AdminArtifacts', component: AdminPlaceholder },
-        { path: 'badges', name: 'AdminBadges', component: AdminPlaceholder },
+        { path: 'events', name: 'AdminEvents', component: AdminEvents },
+        { path: 'events/new', name: 'AdminEventNew', component: AdminEventEdit },
+        { path: 'events/:id', name: 'AdminEventEdit', component: AdminEventEdit },
+        { path: 'museums', name: 'AdminMuseums', component: AdminMuseums },
+        { path: 'museums/new', name: 'AdminMuseumNew', component: AdminMuseumEdit },
+        { path: 'museums/:id', name: 'AdminMuseumEdit', component: AdminMuseumEdit },
+        { path: 'artifacts', name: 'AdminArtifacts', component: AdminArtifacts },
+        { path: 'artifacts/new', name: 'AdminArtifactNew', component: AdminArtifactEdit },
+        { path: 'artifacts/:id', name: 'AdminArtifactEdit', component: AdminArtifactEdit },
+        { path: 'badges', name: 'AdminBadges', component: AdminBadges },
         { path: 'students', name: 'AdminStudents', component: AdminStudents },
       ],
     },
