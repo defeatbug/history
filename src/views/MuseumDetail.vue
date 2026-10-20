@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getMuseumById, type Artifact } from '@/data/museumData'
+import { museums as museumMockData, type Artifact, type Museum } from '@/data/museumData'
+import { fetchMuseums } from '@/services/content'
 
 const route = useRoute()
 const router = useRouter()
 
+/** 博物馆数据：远端优先、本地 mock 回退（与 Museums.vue 一致） */
+const museums = ref<Museum[]>(museumMockData)
+
 const museum = computed(() => {
   const id = route.params.id as string
-  return getMuseumById(id)
+  return museums.value.find((m) => m.id === id)
 })
 
 const selectedArtifact = ref<Artifact | null>(null)
@@ -21,7 +25,9 @@ const closeArtifactDetail = () => {
   selectedArtifact.value = null
 }
 
-onMounted(() => {
+onMounted(async () => {
+  const res = await fetchMuseums(museumMockData)
+  museums.value = res.data
   if (!museum.value) {
     router.push('/museums')
   }
@@ -43,7 +49,15 @@ onMounted(() => {
       <div class="relative z-10">
         <div class="flex items-start justify-between mb-6">
           <div class="flex-1">
-            <div class="text-8xl mb-4">{{ museum.coverImage }}</div>
+            <div class="mb-4">
+              <img
+                v-if="museum.coverUrl"
+                :src="museum.coverUrl"
+                :alt="museum.name"
+                class="w-32 h-32 rounded-3xl object-cover"
+              />
+              <div v-else class="text-8xl">{{ museum.coverImage }}</div>
+            </div>
             <h1 class="text-4xl md:text-5xl font-bold text-gray-800 mb-2">
               {{ museum.name }}
             </h1>

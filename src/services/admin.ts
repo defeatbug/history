@@ -11,6 +11,7 @@
 
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { canPersist } from './progress'
+import { nextNumberedId, nextArtifactId } from '@/utils/idSequence'
 
 export type Difficulty = 'beginner' | 'intermediate' | 'advanced'
 
@@ -810,5 +811,864 @@ export async function fetchDailyActivity(
     const message = error instanceof Error ? error.message : String(error)
     console.warn('[admin] 读取活跃度失败：', message)
     return { data: [], error: message }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 历史事件 CRUD
+//
+// 学生端的 HistoryStudy.vue 按朝代/类别分组展示，时间线内按年份从早到晚排；
+// 后台的排序号（sort_order）决定事件库的整体展示顺序，拖拽维护。
+// ---------------------------------------------------------------------------
+
+/** 学生端 HistoryEvent 类别 —— 后台新建/编辑时只能选这六个 */
+export const EVENT_CATEGORIES = ['政治', '文化', '战争', '科技', '经济', '社会'] as const
+
+export interface AdminHistoryEvent {
+  id: string
+  title: string
+  period: string | null
+  year: string | null
+  dynasty: string | null
+  category: string | null
+  description: string | null
+  content: string | null
+  significance: string | null
+  keywords: string[]
+  image: string | null
+  relatedEvents: string[]
+  sortOrder: number
+}
+
+export interface HistoryEventFormData {
+  title: string
+  period: string
+  /** 年份原文，如 "前2070" / "618-907"，展示与排序（回填）都依赖它 */
+  year: string
+  dynasty: string
+  category: string
+  description: string
+  content: string
+  significance: string
+  keywords: string[]
+  image: string | null
+  relatedEvents: string[]
+}
+
+interface HistoryEventRow {
+  id: string
+  title: string
+  period: string | null
+  year: string | null
+  dynasty: string | null
+  category: string | null
+  description: string | null
+  content: string | null
+  significance: string | null
+  keywords: string[] | null
+  image: string | null
+  related_events: string[] | null
+  sort_order: number | null
+}
+
+function mapHistoryEvent(row: HistoryEventRow): AdminHistoryEvent {
+  return {
+    id: row.id,
+    title: row.title,
+    period: row.period,
+    year: row.year,
+    dynasty: row.dynasty,
+    category: row.category,
+    description: row.description,
+    content: row.content,
+    significance: row.significance,
+    keywords: row.keywords ?? [],
+    image: row.image,
+    relatedEvents: row.related_events ?? [],
+    sortOrder: row.sort_order ?? 0,
+  }
+}
+
+/** 读取全部历史事件，按 sort_order 排列 */
+export async function fetchAdminEvents(
+  userId: string,
+): Promise<AdminFetchResult<AdminHistoryEvent[]>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) {
+    return { data: [], error: '尚未登录或未配置 Supabase' }
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('history_events')
+      .select('*')
+      .order('sort_order', { ascending: true })
+
+    if (error) throw error
+    return { data: (data ?? []).map((r) => mapHistoryEvent(r as unknown as HistoryEventRow)) }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取历史事件失败：', message)
+    return { data: [], error: message }
+  }
+}
+
+/** 读取单个历史事件 */
+export async function fetchAdminEvent(
+  userId: string,
+  id: string,
+): Promise<AdminFetchResult<AdminHistoryEvent | null>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) {
+    return { data: null, error: '尚未登录或未配置 Supabase' }
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('history_events')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (error) throw error
+    return { data: data ? mapHistoryEvent(data as unknown as HistoryEventRow) : null }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取历史事件失败：', message)
+    return { data: null, error: message }
+  }
+}
+
+/**
+ * 生成下一个事件 id：event-<最大号+1>。
+ * 纯序号逻辑见 src/utils/idSequence.ts（可单测），这里只负责查现有 id。
+ */
+export async function generateEventId(): Promise<string> {
+  try {
+    const { data } = await supabase.from('history_events').select('id')
+    return nextNumberedId(
+      (data ?? []).map((r) => (r as { id: string }).id),
+      /^event-(\d+)$/,
+      (n) => `event-${n}`,
+    )
+  } catch {
+    return `event-${Date.now().toString(36)}`
+  }
+}
+
+function toHistoryEventRow(data: HistoryEventFormData) {
+  return {
+    title: data.title.trim(),
+    period: data.period.trim() || null,
+    year: data.year.trim() || null,
+    dynasty: data.dynasty.trim() || null,
+    // 类别固定六选一（学生端 HistoryEvent 类型只认识这六个），
+    // 界面用下拉约束，这里做最后一道兜底。
+    category: EVENT_CATEGORIES.includes(data.category as (typeof EVENT_CATEGORIES)[number])
+      ? data.category
+      : '社会',
+    description: data.description.trim() || null,
+    content: data.content.trim() || null,
+    significance: data.significance.trim() || null,
+    keywords: data.keywords.map((k) => k.trim()).filter((k) => k.length > 0),
+    image: data.image?.trim() || null,
+    related_events: data.relatedEvents,
+  }
+}
+
+/** 新建历史事件（追加到列表末尾） */
+export async function createHistoryEvent(
+  data: HistoryEventFormData,
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  try {
+    const id = await generateEventId()
+
+    const { data: existing } = await supabase.from('history_events').select('sort_order')
+    const nextOrder = (existing ?? []).reduce(
+      (max, r) => Math.max(max, (r as { sort_order: number | null }).sort_order ?? 0),
+      -1,
+    ) + 1
+
+    const { error } = await supabase
+      .from('history_events')
+      .insert({ id, ...toHistoryEventRow(data), sort_order: nextOrder })
+
+    if (error) throw error
+    return { ok: true, id }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 新建历史事件失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 更新历史事件（不改 sort_order，顺序由列表拖拽负责） */
+export async function updateHistoryEvent(
+  id: string,
+  data: HistoryEventFormData,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('history_events')
+      .update(toHistoryEventRow(data))
+      .eq('id', id)
+    if (error) throw error
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 更新历史事件失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 更新历史事件排序 */
+export async function updateEventOrder(
+  orders: Array<{ id: string; sortOrder: number }>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    for (const { id, sortOrder } of orders) {
+      const { error } = await supabase
+        .from('history_events')
+        .update({ sort_order: sortOrder })
+        .eq('id', id)
+      if (error) throw error
+    }
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 更新事件排序失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/**
+ * 删除历史事件。
+ *
+ * 事件表与学生行为表没有外键关联，删除不会波及学习记录；
+ * 但事件之间有 related_events 引用（知识图谱关联），
+ * 被引用的事件被删后，引用方的「相关事件」会出现悬空 id ——
+ * 因此调用方必须先展示影响面并要求二次确认。
+ */
+export async function deleteHistoryEvent(id: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from('history_events').delete().eq('id', id)
+    if (error) throw error
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 删除历史事件失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 统计某个事件被多少其他事件的 related_events 引用 */
+export async function fetchEventImpact(
+  eventId: string,
+): Promise<{ referencedBy: number; error?: string }> {
+  try {
+    const { count, error } = await supabase
+      .from('history_events')
+      .select('id', { count: 'exact', head: true })
+      .neq('id', eventId)
+      .contains('related_events', [eventId])
+
+    if (error) throw error
+    return { referencedBy: count ?? 0 }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取事件影响面失败：', message)
+    return { referencedBy: 0, error: message }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 博物馆 CRUD
+//
+// cover 语义与课程一致：cover_image 是 emoji（降级显示），
+// cover_url 是上传的真实图片（优先显示）。
+// ---------------------------------------------------------------------------
+
+export interface AdminMuseum {
+  id: string
+  name: string
+  nameEn: string | null
+  location: string | null
+  country: string | null
+  established: string | null
+  description: string | null
+  coverImage: string | null
+  coverUrl: string | null
+  sortOrder: number
+  /** 影响面：馆内文物数（删除博物馆会级联删除这些文物） */
+  artifactCount: number
+}
+
+export interface MuseumFormData {
+  name: string
+  nameEn: string
+  location: string
+  country: string
+  established: string
+  description: string
+  coverImage: string
+  coverUrl: string | null
+}
+
+interface MuseumRow {
+  id: string
+  name: string
+  name_en: string | null
+  location: string | null
+  country: string | null
+  established: string | null
+  description: string | null
+  cover_image: string | null
+  cover_url: string | null
+  sort_order: number | null
+}
+
+function mapMuseum(row: MuseumRow, artifactCount = 0): AdminMuseum {
+  return {
+    id: row.id,
+    name: row.name,
+    nameEn: row.name_en,
+    location: row.location,
+    country: row.country,
+    established: row.established,
+    description: row.description,
+    coverImage: row.cover_image,
+    coverUrl: row.cover_url,
+    sortOrder: row.sort_order ?? 0,
+    artifactCount,
+  }
+}
+
+/** 读取全部博物馆（含馆内文物数），按 sort_order 排列 */
+export async function fetchAdminMuseums(
+  userId: string,
+): Promise<AdminFetchResult<AdminMuseum[]>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) {
+    return { data: [], error: '尚未登录或未配置 Supabase' }
+  }
+
+  try {
+    const [museumsRes, artifactsRes] = await Promise.all([
+      supabase.from('museums').select('*').order('sort_order', { ascending: true }),
+      supabase.from('artifacts').select('museum_id'),
+    ])
+
+    if (museumsRes.error) throw museumsRes.error
+    if (artifactsRes.error) throw artifactsRes.error
+
+    const countByMuseum = new Map<string, number>()
+    for (const a of artifactsRes.data ?? []) {
+      const museumId = (a as { museum_id: string }).museum_id
+      countByMuseum.set(museumId, (countByMuseum.get(museumId) ?? 0) + 1)
+    }
+
+    return {
+      data: (museumsRes.data ?? []).map((r) =>
+        mapMuseum(r as unknown as MuseumRow, countByMuseum.get((r as MuseumRow).id) ?? 0),
+      ),
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取博物馆失败：', message)
+    return { data: [], error: message }
+  }
+}
+
+/** 读取单个博物馆（含馆内文物数） */
+export async function fetchAdminMuseum(
+  userId: string,
+  id: string,
+): Promise<AdminFetchResult<AdminMuseum | null>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) {
+    return { data: null, error: '尚未登录或未配置 Supabase' }
+  }
+
+  try {
+    const { data, error } = await supabase.from('museums').select('*').eq('id', id).maybeSingle()
+    if (error) throw error
+    if (!data) return { data: null }
+
+    const impact = await fetchMuseumImpact(id)
+    return { data: mapMuseum(data as unknown as MuseumRow, impact.artifactCount) }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取博物馆失败：', message)
+    return { data: null, error: message }
+  }
+}
+
+/** 生成下一个博物馆 id：museum-<最大号+1> */
+export async function generateMuseumId(): Promise<string> {
+  try {
+    const { data } = await supabase.from('museums').select('id')
+    return nextNumberedId(
+      (data ?? []).map((r) => (r as { id: string }).id),
+      /^museum-(\d+)$/,
+      (n) => `museum-${n}`,
+    )
+  } catch {
+    return `museum-${Date.now().toString(36)}`
+  }
+}
+
+function toMuseumRow(data: MuseumFormData) {
+  return {
+    name: data.name.trim(),
+    name_en: data.nameEn.trim() || null,
+    location: data.location.trim() || null,
+    country: data.country.trim() || null,
+    established: data.established.trim() || null,
+    description: data.description.trim() || null,
+    cover_image: data.coverImage.trim() || null,
+    cover_url: data.coverUrl?.trim() || null,
+  }
+}
+
+/** 新建博物馆（追加到列表末尾） */
+export async function createMuseum(
+  data: MuseumFormData,
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  try {
+    const id = await generateMuseumId()
+
+    const { data: existing } = await supabase.from('museums').select('sort_order')
+    const nextOrder = (existing ?? []).reduce(
+      (max, r) => Math.max(max, (r as { sort_order: number | null }).sort_order ?? 0),
+      -1,
+    ) + 1
+
+    const { error } = await supabase
+      .from('museums')
+      .insert({ id, ...toMuseumRow(data), sort_order: nextOrder })
+
+    if (error) throw error
+    return { ok: true, id }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 新建博物馆失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 更新博物馆（不改 sort_order，顺序由列表拖拽负责） */
+export async function updateMuseum(
+  id: string,
+  data: MuseumFormData,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from('museums').update(toMuseumRow(data)).eq('id', id)
+    if (error) throw error
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 更新博物馆失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 更新博物馆排序 */
+export async function updateMuseumOrder(
+  orders: Array<{ id: string; sortOrder: number }>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    for (const { id, sortOrder } of orders) {
+      const { error } = await supabase
+        .from('museums')
+        .update({ sort_order: sortOrder })
+        .eq('id', id)
+      if (error) throw error
+    }
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 更新博物馆排序失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/**
+ * 删除博物馆。
+ *
+ * ⚠️ artifacts.museum_id 是 ON DELETE CASCADE：
+ * 删除一座博物馆会连带删除它的全部文物记录。
+ * 文物不关联学生行为数据，所以不影响学习记录，
+ * 但内容本身不可恢复 —— 调用方必须先展示文物数并要求二次确认。
+ */
+export async function deleteMuseum(id: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from('museums').delete().eq('id', id)
+    if (error) throw error
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 删除博物馆失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 统计某座博物馆的馆藏文物数（删除时会被级联删除） */
+export async function fetchMuseumImpact(
+  museumId: string,
+): Promise<{ artifactCount: number; error?: string }> {
+  try {
+    const { count, error } = await supabase
+      .from('artifacts')
+      .select('id', { count: 'exact', head: true })
+      .eq('museum_id', museumId)
+
+    if (error) throw error
+    return { artifactCount: count ?? 0 }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取博物馆影响面失败：', message)
+    return { artifactCount: 0, error: message }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 文物 CRUD
+//
+// 文物挂在博物馆下，没有独立的展示入口；学生端随所属博物馆一起读取。
+// 文物不关联任何学生行为数据，删除只影响内容本身。
+// ---------------------------------------------------------------------------
+
+export interface AdminArtifact {
+  id: string
+  museumId: string
+  /** 所属博物馆名称（列表展示用，一次查询带出避免 N+1） */
+  museumName: string
+  name: string
+  nameEn: string | null
+  period: string | null
+  civilization: string | null
+  material: string | null
+  dimensions: string | null
+  description: string | null
+  detailedDescription: string | null
+  imageUrl: string | null
+  significance: string | null
+  sortOrder: number
+}
+
+export interface ArtifactFormData {
+  museumId: string
+  name: string
+  nameEn: string
+  period: string
+  civilization: string
+  material: string
+  dimensions: string
+  description: string
+  detailedDescription: string
+  imageUrl: string | null
+  significance: string
+}
+
+interface ArtifactRow {
+  id: string
+  museum_id: string
+  name: string
+  name_en: string | null
+  period: string | null
+  civilization: string | null
+  material: string | null
+  dimensions: string | null
+  description: string | null
+  detailed_description: string | null
+  image_url: string | null
+  significance: string | null
+  sort_order: number | null
+}
+
+function mapArtifact(row: ArtifactRow, museumName: string): AdminArtifact {
+  return {
+    id: row.id,
+    museumId: row.museum_id,
+    museumName,
+    name: row.name,
+    nameEn: row.name_en,
+    period: row.period,
+    civilization: row.civilization,
+    material: row.material,
+    dimensions: row.dimensions,
+    description: row.description,
+    detailedDescription: row.detailed_description,
+    imageUrl: row.image_url,
+    significance: row.significance,
+    sortOrder: row.sort_order ?? 0,
+  }
+}
+
+/**
+ * 读取文物（可选按馆筛选），按 sort_order 排列。
+ * 博物馆名一次查出拼上，避免每行再查一次。
+ */
+export async function fetchAdminArtifacts(
+  userId: string,
+  museumId?: string,
+): Promise<AdminFetchResult<AdminArtifact[]>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) {
+    return { data: [], error: '尚未登录或未配置 Supabase' }
+  }
+
+  try {
+    let query = supabase.from('artifacts').select('*').order('sort_order', { ascending: true })
+    if (museumId) query = query.eq('museum_id', museumId)
+
+    const [artifactsRes, museumsRes] = await Promise.all([
+      query,
+      supabase.from('museums').select('id, name'),
+    ])
+
+    if (artifactsRes.error) throw artifactsRes.error
+    if (museumsRes.error) throw museumsRes.error
+
+    const nameByMuseum = new Map(
+      (museumsRes.data ?? []).map((m) => {
+        const row = m as { id: string; name: string }
+        return [row.id, row.name] as const
+      }),
+    )
+
+    return {
+      data: (artifactsRes.data ?? []).map((r) => {
+        const row = r as unknown as ArtifactRow
+        return mapArtifact(row, nameByMuseum.get(row.museum_id) ?? row.museum_id)
+      }),
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取文物失败：', message)
+    return { data: [], error: message }
+  }
+}
+
+/** 读取单件文物 */
+export async function fetchAdminArtifact(
+  userId: string,
+  id: string,
+): Promise<AdminFetchResult<AdminArtifact | null>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) {
+    return { data: null, error: '尚未登录或未配置 Supabase' }
+  }
+
+  try {
+    const { data, error } = await supabase.from('artifacts').select('*').eq('id', id).maybeSingle()
+    if (error) throw error
+    if (!data) return { data: null }
+
+    const row = data as unknown as ArtifactRow
+    const { data: museum } = await supabase
+      .from('museums')
+      .select('name')
+      .eq('id', row.museum_id)
+      .maybeSingle()
+    const museumName = (museum as { name: string } | null)?.name ?? row.museum_id
+
+    return { data: mapArtifact(row, museumName) }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取文物失败：', message)
+    return { data: null, error: message }
+  }
+}
+
+/**
+ * 生成下一件文物的 id：artifact-<馆号>-<该馆最大序号+1>。
+ * 序号按馆隔离（见 src/utils/idSequence.ts 的 nextArtifactId）。
+ */
+export async function generateArtifactId(museumId: string): Promise<string> {
+  try {
+    const { data } = await supabase.from('artifacts').select('id').eq('museum_id', museumId)
+    return nextArtifactId(
+      museumId,
+      (data ?? []).map((r) => (r as { id: string }).id),
+    )
+  } catch {
+    return `artifact-${Date.now().toString(36)}`
+  }
+}
+
+function toArtifactRow(data: ArtifactFormData) {
+  return {
+    museum_id: data.museumId,
+    name: data.name.trim(),
+    name_en: data.nameEn.trim() || null,
+    period: data.period.trim() || null,
+    civilization: data.civilization.trim() || null,
+    material: data.material.trim() || null,
+    dimensions: data.dimensions.trim() || null,
+    description: data.description.trim() || null,
+    detailed_description: data.detailedDescription.trim() || null,
+    image_url: data.imageUrl?.trim() || null,
+    significance: data.significance.trim() || null,
+  }
+}
+
+/** 新建文物（追加到所属馆的文物末尾） */
+export async function createArtifact(
+  data: ArtifactFormData,
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  try {
+    const id = await generateArtifactId(data.museumId)
+
+    const { data: siblings } = await supabase
+      .from('artifacts')
+      .select('sort_order')
+      .eq('museum_id', data.museumId)
+    const nextOrder = (siblings ?? []).reduce(
+      (max, r) => Math.max(max, (r as { sort_order: number | null }).sort_order ?? 0),
+      -1,
+    ) + 1
+
+    const { error } = await supabase
+      .from('artifacts')
+      .insert({ id, ...toArtifactRow(data), sort_order: nextOrder })
+
+    if (error) throw error
+    return { ok: true, id }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 新建文物失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 更新文物（不改 sort_order，顺序由列表拖拽负责） */
+export async function updateArtifact(
+  id: string,
+  data: ArtifactFormData,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from('artifacts').update(toArtifactRow(data)).eq('id', id)
+    if (error) throw error
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 更新文物失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 更新文物排序 */
+export async function updateArtifactOrder(
+  orders: Array<{ id: string; sortOrder: number }>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    for (const { id, sortOrder } of orders) {
+      const { error } = await supabase
+        .from('artifacts')
+        .update({ sort_order: sortOrder })
+        .eq('id', id)
+      if (error) throw error
+    }
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 更新文物排序失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/**
+ * 删除文物。
+ *
+ * 文物表没有指向学生行为表的外键，删除不影响任何学习记录，
+ * 只移除内容本身 —— 但仍不可恢复，调用方需二次确认。
+ */
+export async function deleteArtifact(id: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from('artifacts').delete().eq('id', id)
+    if (error) throw error
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 删除文物失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 勋章（只读列表 + 文案维护）
+//
+// PRODUCT.md 已否决「勋章解锁规则的图形化配置」：解锁逻辑维护在
+// 数据库函数 evaluate_badges 内。后台只允许改 name / description 这两个
+// 纯文案字段，不提供新建 / 删除 / 排序入口。
+// ---------------------------------------------------------------------------
+
+export interface AdminBadge {
+  id: string
+  name: string
+  description: string | null
+  /** 图标（只读展示） */
+  icon: string | null
+  /** 解锁条件说明（只读展示，规则本身在数据库函数里） */
+  requirement: string | null
+  sortOrder: number
+}
+
+interface BadgeRow {
+  id: string
+  name: string
+  description: string | null
+  icon: string | null
+  requirement: string | null
+  sort_order: number | null
+}
+
+/** 读取全部勋章，按 sort_order 排列 */
+export async function fetchAdminBadges(
+  userId: string,
+): Promise<AdminFetchResult<AdminBadge[]>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) {
+    return { data: [], error: '尚未登录或未配置 Supabase' }
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('badges')
+      .select('*')
+      .order('sort_order', { ascending: true })
+
+    if (error) throw error
+
+    return {
+      data: (data ?? []).map((r) => {
+        const row = r as unknown as BadgeRow
+        return {
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          icon: row.icon,
+          requirement: row.requirement,
+          sortOrder: row.sort_order ?? 0,
+        }
+      }),
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取勋章失败：', message)
+    return { data: [], error: message }
+  }
+}
+
+/** 更新勋章文案（仅 name / description 可改） */
+export async function updateBadgeText(
+  id: string,
+  data: { name: string; description: string },
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('badges')
+      .update({ name: data.name.trim(), description: data.description.trim() || null })
+      .eq('id', id)
+    if (error) throw error
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 更新勋章失败：', message)
+    return { ok: false, error: message }
   }
 }

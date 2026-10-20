@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { chinaTimeline, worldTimeline, type TimelineEvent } from '../data/mockData'
+import { fetchTimelineEvents } from '../services/content'
 import { useUserStore } from '../stores/user'
 
 const router = useRouter()
@@ -9,8 +10,25 @@ const userStore = useUserStore()
 
 const activeTab = ref<'china' | 'world'>('china')
 
+/**
+ * 时间轴数据：远端优先、本地 mock 回退。
+ * 两个分支都预加载，切换标签时无需等待。
+ */
+const timelines = ref<Record<'china' | 'world', TimelineEvent[]>>({
+  china: chinaTimeline,
+  world: worldTimeline,
+})
+
 const currentTimeline = computed<TimelineEvent[]>(() => {
-  return activeTab.value === 'china' ? chinaTimeline : worldTimeline
+  return timelines.value[activeTab.value]
+})
+
+onMounted(async () => {
+  const [chinaRes, worldRes] = await Promise.all([
+    fetchTimelineEvents('china', chinaTimeline),
+    fetchTimelineEvents('world', worldTimeline),
+  ])
+  timelines.value = { china: chinaRes.data, world: worldRes.data }
 })
 
 const goToLesson = (lessonId?: string) => {

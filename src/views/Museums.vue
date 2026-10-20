@@ -1,26 +1,38 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { museums } from '@/data/museumData'
+import { museums as museumMockData, type Museum } from '@/data/museumData'
+import { fetchMuseums } from '@/services/content'
 
 const router = useRouter()
 const selectedCountry = ref<string>('all')
 
+/**
+ * 博物馆数据：远端优先、本地 mock 回退。
+ * 后台的增删改、文物维护与拖拽排序通过这里实时生效。
+ */
+const museums = ref<Museum[]>(museumMockData)
+
 const countries = computed(() => {
-  const countrySet = new Set(museums.map((m) => m.country))
+  const countrySet = new Set(museums.value.map((m) => m.country))
   return ['all', ...Array.from(countrySet)]
 })
 
 const filteredMuseums = computed(() => {
   if (selectedCountry.value === 'all') {
-    return museums
+    return museums.value
   }
-  return museums.filter((m) => m.country === selectedCountry.value)
+  return museums.value.filter((m) => m.country === selectedCountry.value)
 })
 
 const goToMuseum = (museumId: string) => {
   router.push(`/museums/${museumId}`)
 }
+
+onMounted(async () => {
+  const res = await fetchMuseums(museumMockData)
+  museums.value = res.data
+})
 </script>
 
 <template>
@@ -67,8 +79,14 @@ const goToMuseum = (museumId: string) => {
 
         <div class="relative p-6 flex-1 flex flex-col">
           <div class="flex items-start justify-between mb-4">
-            <div class="text-7xl transform group-hover:scale-110 transition-transform">
-              {{ museum.coverImage }}
+            <div class="transform group-hover:scale-110 transition-transform">
+              <img
+                v-if="museum.coverUrl"
+                :src="museum.coverUrl"
+                :alt="museum.name"
+                class="w-24 h-24 rounded-2xl object-cover"
+              />
+              <span v-else class="text-7xl">{{ museum.coverImage }}</span>
             </div>
             <div class="text-right">
               <div class="text-xs text-gray-500 mb-1">建立于</div>

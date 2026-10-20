@@ -86,6 +86,8 @@ export type HistoryEventRow = {
   keywords: string[]
   image: string | null
   related_events: string[]
+  /** 后台拖拽排序号（迁移 11 新增） */
+  sort_order: number
 }
 export type TimelineEventRow = {
   id: string
@@ -108,6 +110,8 @@ export type MuseumRow = {
   cover_image: string | null
   /** 真实封面图片 URL（P2-5 新增） */
   cover_url: string | null
+  /** 后台拖拽排序号（迁移 11 新增） */
+  sort_order: number
 }
 export type ArtifactRow = {
   id: string
@@ -122,6 +126,8 @@ export type ArtifactRow = {
   detailed_description: string | null
   image_url: string | null
   significance: string | null
+  /** 后台拖拽排序号（迁移 11 新增） */
+  sort_order: number
 }
 export type UserProgressRow = {
   user_id: string

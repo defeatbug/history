@@ -9,6 +9,8 @@ export interface Museum {
   established: string
   description: string
   coverImage: string
+  /** 后台上传的真实封面 URL；为空时学生端回退到 coverImage（emoji） */
+  coverUrl?: string
   artifacts: Artifact[]
 }
 

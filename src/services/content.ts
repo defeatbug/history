@@ -116,6 +116,8 @@ export function mapMuseum(row: MuseumRow, artifacts: ArtifactRow[]): Museum {
     established: row.established ?? '',
     description: row.description ?? '',
     coverImage: row.cover_image ?? '🏛️',
+    /** 后台上传的真实封面；为空时学生端回退到 coverImage（emoji） */
+    coverUrl: row.cover_url ?? undefined,
     artifacts: artifacts.map(mapArtifact),
   }
 }
@@ -197,7 +199,9 @@ export async function fetchBadges(): Promise<FetchResult<Badge[]>> {
 }
 
 /**
- * 读取历史事件库
+ * 读取历史事件库。
+ * 排序由 sort_order 决定（后台拖拽维护），回填迁移保证了与原先的
+ * 「按年份从早到晚」一致。
  */
 export async function fetchHistoryEvents(
   fallbackData: HistoryEvent[],
@@ -208,7 +212,7 @@ export async function fetchHistoryEvents(
     const { data, error } = await supabase
       .from('history_events')
       .select('*')
-      .order('year', { ascending: true })
+      .order('sort_order', { ascending: true })
 
     if (error) throw error
     if (!data?.length) return { data: fallbackData, source: 'mock', error: '数据库事件表为空' }
@@ -254,8 +258,8 @@ export async function fetchMuseums(
 
   try {
     const [museumsRes, artifactsRes] = await Promise.all([
-      supabase.from('museums').select('*'),
-      supabase.from('artifacts').select('*'),
+      supabase.from('museums').select('*').order('sort_order', { ascending: true }),
+      supabase.from('artifacts').select('*').order('sort_order', { ascending: true }),
     ])
 
     if (museumsRes.error) throw museumsRes.error

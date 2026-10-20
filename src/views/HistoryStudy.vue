@@ -1,12 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import HistoryCard from '@/components/HistoryCard.vue'
-import {
-  chinaHistoryEvents,
-  historyByDynasty,
-  historyByCategory,
-  type HistoryEvent,
-} from '@/data/chinaHistory'
+import { chinaHistoryEvents, type HistoryEvent } from '@/data/chinaHistory'
+import { fetchHistoryEvents } from '@/services/content'
 
 const searchQuery = ref('')
 const selectedDynasty = ref<string>('全部')
@@ -14,20 +10,21 @@ const selectedCategory = ref<string>('全部')
 const selectedEvent = ref<HistoryEvent | null>(null)
 const viewMode = ref<'grid' | 'timeline'>('grid')
 
-// 朝代列表
+/**
+ * 事件数据：远端优先、本地 mock 回退（与勋章相同的降级策略）。
+ * 后台的增删改（以及拖拽排序）通过这里实时生效。
+ */
+const events = ref<HistoryEvent[]>([...chinaHistoryEvents])
+
+// 朝代 / 类别列表：从当前数据动态取，新增朝代自动出现在筛选器里
 const dynasties = computed(() => [
   '全部',
-  ...Object.keys(historyByDynasty).filter(
-    (d) => historyByDynasty[d as keyof typeof historyByDynasty].length > 0,
-  ),
+  ...Array.from(new Set(events.value.map((e) => e.dynasty).filter(Boolean))),
 ])
 
-// 类别列表
 const categories = computed(() => [
   '全部',
-  ...Object.keys(historyByCategory).filter(
-    (c) => historyByCategory[c as keyof typeof historyByCategory].length > 0,
-  ),
+  ...Array.from(new Set(events.value.map((e) => e.category).filter(Boolean))),
 ])
 
 const extractYear = (year?: string) => {
@@ -43,22 +40,22 @@ const extractYear = (year?: string) => {
 
 // 筛选后的历史事件
 const filteredEvents = computed(() => {
-  let events = chinaHistoryEvents
+  let filtered = events.value
 
   // 按朝代筛选
   if (selectedDynasty.value !== '全部') {
-    events = events.filter((e) => e.dynasty === selectedDynasty.value)
+    filtered = filtered.filter((e) => e.dynasty === selectedDynasty.value)
   }
 
   // 按类别筛选
   if (selectedCategory.value !== '全部') {
-    events = events.filter((e) => e.category === selectedCategory.value)
+    filtered = filtered.filter((e) => e.category === selectedCategory.value)
   }
 
   // 按搜索关键词筛选
   if (searchQuery.value.trim()) {
     const query = searchQuery.value.toLowerCase()
-    events = events.filter(
+    filtered = filtered.filter(
       (e) =>
         e.title.toLowerCase().includes(query) ||
         e.description.toLowerCase().includes(query) ||
@@ -67,8 +64,8 @@ const filteredEvents = computed(() => {
     )
   }
 
-  // 按时间排序（从早到晚）
-  return events.sort((a, b) => {
+  // 按时间排序（从早到晚）；slice 避免原地排序污染源数组
+  return filtered.slice().sort((a, b) => {
     const yearA = extractYear(a.year)
     const yearB = extractYear(b.year)
     return yearA - yearB
@@ -96,12 +93,17 @@ const closeEventDetail = () => {
   selectedEvent.value = null
 }
 
-// 页面加载动画
+// 页面加载动画 + 远端数据加载（失败时静默保留 mock）
 const pageLoaded = ref(false)
-onMounted(() => {
-  setTimeout(() => {
-    pageLoaded.value = true
-  }, 100)
+onMounted(async () => {
+  try {
+    const res = await fetchHistoryEvents(chinaHistoryEvents)
+    events.value = res.data
+  } finally {
+    setTimeout(() => {
+      pageLoaded.value = true
+    }, 100)
+  }
 })
 </script>
 
