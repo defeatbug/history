@@ -39,7 +39,7 @@ npm run fn:deploy
 
 ### 数据库初始化
 
-按顺序执行 `supabase/migrations/` 下的 13 个迁移（`20250101000000` – `20250101000012`），再由 seed 迁移写入课程、题目、历史事件、博物馆、文物与勋章定义。
+按顺序执行 `supabase/migrations/` 下的 14 个迁移（`20250101000000` – `20250101000013`），再由 seed 迁移写入课程、题目、历史事件、博物馆、文物与勋章定义。
 
 ```bash
 npm run cloud:setup    # 首次：关联云端项目 + 推送迁移 + 自检
@@ -64,6 +64,8 @@ npm run cloud:e2e      # API 层端到端冒烟（非浏览器 UI 测试）
 - **知识时间线 / 历史事件**：搜索、分类浏览、事件详情与相关事件跳转
 - **博物馆**：博物馆与文物详情，图片缺失时降级为 emoji
 - **学习统计**：完成课程、勋章、学习时长、连续学习天数、课程正确率
+- **好友**：按用户名搜索并发送请求、接受 / 拒绝、删除好友；好友战绩与在线状态（Realtime Presence）
+- **好友 PK**：向好友发起挑战、对方应战后进入同一房间作答；实时比分同步、双方各自答完自动结算、逐题复盘、历史战绩
 - **AI 历史助教**：通过 `chat` Edge Function 流式回答
 
 ### 管理后台（`/admin`）
@@ -73,7 +75,7 @@ npm run cloud:e2e      # API 层端到端冒烟（非浏览器 UI 测试）
 - 图片上传到 `media` bucket（canvas 压缩，≤5MB），删除课程 / 事件前展示影响面并要求二次确认
 - 窄屏下侧栏变为抽屉，宽表格可横向滚动
 
-> 好友与 PK 对战目前是前端本地模拟（固定好友、随机对手、固定题目），未接入 `friendships` / `pk_matches` 表，不能作为"已实现社交功能"表述。
+> 好友与 PK 的规则（好友请求不变量、题目抽取、答案判定、比分结算）全部在数据库 RPC 中实现（迁移 13），前端只提交「选了第几项」；实时比分与好友请求通过 Supabase Realtime 推送。
 
 ## 目录结构
 
@@ -82,14 +84,14 @@ src/
   main.ts / App.vue        应用入口与根组件
   router/index.ts          路由与登录 / 管理员守卫
   stores/                  Pinia：user、lesson、review、friend、counter
-  services/                ai、content、progress、review、admin（Supabase 访问层）
+  services/                ai、content、progress、review、admin、friends、pk（Supabase 访问层）
   lib/supabase.ts          Supabase 客户端（未配置时降级）
   data/                    课程 / 历史事件 / 博物馆的本地 mock 与类型
-  utils/                   SM-2、图片压缩、ID 序列、事件关联等纯函数（含单测）
+  utils/                   SM-2、图片压缩、ID 序列、事件关联、PK 展示派生等纯函数（含单测）
   components/              通用组件（课程卡、知识卡、AI 助手、后台上传器等）
   views/                   学习端页面；views/admin/ 为后台页面
 supabase/
-  migrations/              13 个迁移：表 + RLS + 函数/触发器 + 视图 + 种子数据
+  migrations/              14 个迁移：表 + RLS + 函数/触发器 + 视图 + 好友/PK + 种子数据
   functions/chat/          DeepSeek 代理（密钥服务端保管、限流）
 scripts/                   云端初始化、自检、E2E、SQL bundle 等
 ```
@@ -108,7 +110,8 @@ scripts/                   云端初始化、自检、E2E、SQL bundle 等
 
 ## 已知限制
 
-- 好友与 PK 为本地模拟；`friendships` / `pk_matches` 表尚未被前端使用
+- PK 是「同一套题、各自作答、实时比分」的异步房间，不做同题倒计时抢答、匹配队列与排行榜
+- 好友在线状态依赖 Realtime Presence，只表示「当前打开了页面」，不持久化最后在线时间
 - 题型只有单选（数据中两条 `matching` 题为占位，未实现连线交互）
 - 统计页未引入图表库，后台仅有两个 CSS 柱状图
 - 无 CI、无浏览器 E2E、无 PWA；图片资源体积未优化

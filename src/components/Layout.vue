@@ -2,16 +2,20 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useFriendStore } from '@/stores/friend'
 import AIChat from './AIChat.vue'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const friendStore = useFriendStore()
 
 const isMenuOpen = ref(false)
 const isAIChatOpen = ref(false)
 
 const handleLogout = () => {
+  // 好友/PK 数据与在线状态属于账号隐私，退出时一并清空并退订 Realtime
+  friendStore.reset()
   void userStore.logout()
   router.push('/login')
   isMenuOpen.value = false
@@ -19,6 +23,7 @@ const handleLogout = () => {
 
 /** 游客 → 去注册/登录 */
 const handleExitGuest = () => {
+  friendStore.reset()
   void userStore.logout()
   router.push('/login')
 }

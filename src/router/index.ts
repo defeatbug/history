@@ -55,7 +55,9 @@ const router = createRouter({
         { path: 'museums', name: 'Museums', component: Museums },
         { path: 'museums/:id', name: 'MuseumDetail', component: MuseumDetail },
         { path: 'friends', name: 'Friends', component: Friends },
-        { path: 'pk', name: 'PK', component: PK },
+        // PK 房间必须带对战 id：刷新/分享链接都能回到同一场，而不是依赖内存里的 store
+        { path: 'pk/:id', name: 'PK', component: PK },
+        { path: 'pk', redirect: '/friends' },
         { path: 'history-study', name: 'HistoryStudy', component: HistoryStudy },
         { path: 'wrong-answers', name: 'WrongAnswers', component: WrongAnswers },
         { path: 'review', name: 'Review', component: Review },
