@@ -238,7 +238,7 @@ onMounted(() => {
           <img
             class="text-6xl inline-block animate-bounce w-72 h-72"
             :class="isLogin ? 'animate-bounce' : 'animate-pulse'"
-            src="../../public/images/history_logo.png"
+            src="/images/history_logo.png"
           />
         </div>
         <h1

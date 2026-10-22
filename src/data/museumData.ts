@@ -53,7 +53,7 @@ export const museums: Museum[] = [
         description: '刻有三种文字的古埃及石碑，是解读古埃及象形文字的关键',
         detailedDescription:
           '罗塞塔石碑是1799年由法国士兵在埃及罗塞塔发现的。石碑上刻有古埃及象形文字、通俗体文字和古希腊文三种文字，内容相同。1822年，法国学者商博良通过对比三种文字，成功破译了古埃及象形文字，开启了古埃及学研究的新纪元。石碑原本是托勒密五世颁布的诏书，现已成为大英博物馆的镇馆之宝。',
-        imageUrl: '../../public/images/shipei.jpg',
+        imageUrl: '/images/shipei.jpg',
         significance:
           '罗塞塔石碑是解读古埃及文明的关键文物，它的发现使人类重新认识了古埃及的历史和文化。',
       },
@@ -69,7 +69,7 @@ export const museums: Museum[] = [
         description: '来自雅典帕特农神庙的精美大理石雕塑',
         detailedDescription:
           '这些雕塑原本装饰在雅典卫城的帕特农神庙上，由著名雕塑家菲迪亚斯设计。1801-1812年间，英国贵族埃尔金勋爵将这些雕塑运到英国。雕塑展现了古希腊艺术的巅峰成就，包括精美的浮雕和独立雕像，描绘了神话故事和宗教仪式。这些雕塑至今仍是希腊和英国之间争议的焦点。',
-        imageUrl: '../../public/images/yiji.jpg',
+        imageUrl: '/images/yiji.jpg',
         significance: '帕特农神庙雕塑代表了古希腊古典艺术的最高水平，是西方艺术史上的重要里程碑。',
       },
     ],
@@ -96,7 +96,7 @@ export const museums: Museum[] = [
         description: '达芬奇创作的著名肖像画，世界上最著名的艺术作品之一',
         detailedDescription:
           '《蒙娜丽莎》是意大利文艺复兴时期艺术家列奥纳多·达·芬奇创作的肖像画，现藏于法国巴黎卢浮宫。画中人物神秘的微笑和深邃的眼神使其成为艺术史上最著名的作品之一。达芬奇运用了"晕涂法"（sfumato）技术，使画面呈现出柔和朦胧的效果。这幅画作每年吸引数百万游客前来参观，是卢浮宫最受欢迎的展品。',
-        imageUrl: '../../public/images/mengnalisha.jpg',
+        imageUrl: '/images/mengnalisha.jpg',
         significance:
           '《蒙娜丽莎》代表了文艺复兴时期肖像画的最高成就，其艺术价值和历史意义无可估量。',
       },
@@ -127,7 +127,7 @@ export const museums: Museum[] = [
         description: '世界上现存最早的成文法典，刻在黑色石柱上',
         detailedDescription:
           '汉谟拉比法典是古巴比伦国王汉谟拉比颁布的法律汇编，刻在一根黑色闪长岩石柱上。法典包含282条法律条文，涵盖了财产、婚姻、继承、犯罪等各个方面。法典顶部刻有汉谟拉比从太阳神沙马什手中接受法典的场景。这是人类历史上最早的成文法典之一，对后世法律发展产生了重要影响。',
-        imageUrl: '../../public/images/shibei.jpg',
+        imageUrl: '/images/shibei.jpg',
         significance: '汉谟拉比法典是人类法律史上的重要里程碑，展现了古代文明的法律智慧。',
       },
     ],
@@ -181,7 +181,7 @@ export const museums: Museum[] = [
         description: '北宋画家张择端创作的著名风俗画，描绘了汴京的繁华景象',
         detailedDescription:
           '《清明上河图》是北宋画家张择端创作的绢本设色长卷，现藏于北京故宫博物院。画卷生动描绘了北宋都城汴京（今河南开封）的繁华景象，包括市井生活、商业活动、交通运输等各个方面。画中共有814个人物、28艘船只、60多只动物，展现了宋代社会的繁荣和城市生活的细节。这幅画作被誉为"中华第一神品"，是中国绘画史上的杰作。',
-        imageUrl: '../../public/images/qmsht.jpg',
+        imageUrl: '/images/qmsht.jpg',
         significance: '《清明上河图》是研究宋代社会历史的重要资料，也是中国绘画艺术的巅峰之作。',
       },
       {
@@ -196,7 +196,7 @@ export const museums: Museum[] = [
         description: '商朝最大的青铜鼎，中国古代青铜器的代表作',
         detailedDescription:
           '后母戊鼎（原名司母戊鼎）是商朝晚期铸造的青铜方鼎，1939年在河南安阳武官村出土。这是目前发现的最大的中国古代青铜器，重达832.84公斤。鼎身装饰有精美的饕餮纹、夔龙纹等纹饰，体现了商朝高超的青铜铸造技术。鼎内壁刻有"后母戊"三字，表明这是商王为祭祀母亲而铸造的礼器。',
-        imageUrl: '../../public/images/ting.jpg',
+        imageUrl: '/images/ting.jpg',
         significance: '后母戊鼎代表了商朝青铜铸造技术的最高水平，是中华文明的重要象征。',
       },
       {

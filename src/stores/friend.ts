@@ -1,228 +1,393 @@
+/**
+ * 好友与 PK Store
+ * ============================================================================
+ * 把「好友关系 + 对战」的读写集中到一个 store，页面只负责渲染与交互：
+ *
+ *   * 数据来源全部是数据库（friends_list / pk_list_matches / pk_get_match RPC），
+ *     不再有任何本地假数据或 Math.random() 对手；
+ *   * 实时性靠 Supabase Realtime：好友请求、收到挑战、对战比分变化都会自动刷新；
+ *   * 在线状态用 Realtime Presence（同一频道内 track 自己的 user_id），
+ *     没有额外建表，也不会把"离线"误判成"删除"。
+ *
+ * 重要：PK 的规则计算在数据库里（迁移 13），store 只保存服务端返回的结果，
+ * 不做「答对 +1」之类的本地推断，避免前后端两套逻辑漂移。
+ */
+
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-
-export interface Friend {
-  id: string
-  username: string
-  avatar: string
-  status: 'online' | 'offline' | 'in-game'
-  level: number
-  winCount: number
-  totalMatches: number
-  lastActive: Date
-}
-
-export interface PKMatch {
-  id: string
-  opponentId: string
-  opponentName: string
-  status: 'waiting' | 'in-progress' | 'finished'
-  myScore: number
-  opponentScore: number
-  questions: Array<{
-    id: string
-    question: string
-    options: string[]
-    correctAnswer: number
-    myAnswer?: number
-    opponentAnswer?: number
-  }>
-  currentQuestionIndex: number
-  startTime?: Date
-  endTime?: Date
-}
+import type { RealtimeChannel } from '@supabase/supabase-js'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase'
+import type {
+  FriendListRow,
+  FriendsSearchRow,
+  PkAnswerResult,
+  PkMatchDetail,
+  PkMatchSummaryRow,
+} from '@/types/database'
+import {
+  fetchFriends,
+  fetchIncomingRequests,
+  fetchOutgoingRequests,
+  removeFriend as removeFriendApi,
+  respondFriendRequest,
+  searchUsers as searchUsersApi,
+  sendFriendRequest,
+  type FriendRequest,
+} from '@/services/friends'
+import {
+  cancelMatch,
+  createMatch,
+  fetchMatch,
+  fetchMatches,
+  respondMatch,
+  submitAnswer as submitAnswerApi,
+  subscribeIncomingMatches,
+  subscribeIncomingRequests,
+  subscribeMatch,
+  subscribeMyMatchUpdates,
+  unsubscribe,
+} from '@/services/pk'
+import { useUserStore } from './user'
 
 export const useFriendStore = defineStore('friend', () => {
-  // 好友列表
-  const friends = ref<Friend[]>([
-    {
-      id: 'friend-1',
-      username: '历史达人',
-      avatar: '👨‍🎓',
-      status: 'online',
-      level: 5,
-      winCount: 12,
-      totalMatches: 20,
-      lastActive: new Date(),
-    },
-    {
-      id: 'friend-2',
-      username: '考古学家',
-      avatar: '🔍',
-      status: 'offline',
-      level: 8,
-      winCount: 25,
-      totalMatches: 35,
-      lastActive: new Date(Date.now() - 3600000),
-    },
-    {
-      id: 'friend-3',
-      username: '时间旅行者',
-      avatar: '⏰',
-      status: 'in-game',
-      level: 3,
-      winCount: 5,
-      totalMatches: 10,
-      lastActive: new Date(),
-    },
-  ])
+  const userStore = useUserStore()
 
-  // 当前PK对战
-  const currentMatch = ref<PKMatch | null>(null)
+  // -------------------------------------------------------------------------
+  // 状态
+  // -------------------------------------------------------------------------
+  const friends = ref<FriendListRow[]>([])
+  const incomingRequests = ref<FriendRequest[]>([])
+  const outgoingRequests = ref<FriendRequest[]>([])
+  const searchResults = ref<FriendsSearchRow[]>([])
+  const matches = ref<PkMatchSummaryRow[]>([])
+  const currentMatch = ref<PkMatchDetail | null>(null)
+  /** 在线用户 id（Realtime Presence 同步） */
+  const onlineUserIds = ref<string[]>([])
 
-  // 在线好友
-  const onlineFriends = computed(() => {
-    return friends.value.filter((f) => f.status === 'online' || f.status === 'in-game')
-  })
+  const loading = ref(false)
+  const loadingMatch = ref(false)
+  const searching = ref(false)
+  const submitting = ref(false)
+  const error = ref<string | null>(null)
 
-  // 添加好友
-  const addFriend = (friend: Friend) => {
-    if (!friends.value.find((f) => f.id === friend.id)) {
-      friends.value.push(friend)
+  // Realtime 频道句柄（非响应式，避免被 Vue 代理）
+  let matchChannel: RealtimeChannel | null = null
+  let requestChannel: RealtimeChannel | null = null
+  let inviteChannel: RealtimeChannel | null = null
+  let matchUpdateChannel: RealtimeChannel | null = null
+  let presenceChannel: RealtimeChannel | null = null
+
+  // -------------------------------------------------------------------------
+  // 派生数据
+  // -------------------------------------------------------------------------
+  const onlineFriendIds = computed(() => new Set(onlineUserIds.value))
+
+  /** 在线好友 */
+  const onlineFriends = computed(() =>
+    friends.value.filter((f) => onlineFriendIds.value.has(f.user_id)),
+  )
+
+  /** 进行中的对战（含等待应战） */
+  const activeMatches = computed(() =>
+    matches.value.filter((m) => m.status === 'waiting' || m.status === 'in_progress'),
+  )
+
+  /** 别人发给我的待应战邀请 */
+  const incomingInvites = computed(() =>
+    matches.value.filter((m) => m.status === 'waiting' && m.my_role === 'opponent'),
+  )
+
+  /** 我已完成的对战 */
+  const finishedMatches = computed(() => matches.value.filter((m) => m.status === 'finished'))
+
+  const hasPendingRequests = computed(
+    () => incomingRequests.value.length > 0 || incomingInvites.value.length > 0,
+  )
+
+  const isGuest = computed(() => !userStore.canSync)
+
+  // -------------------------------------------------------------------------
+  // 好友：读取 / 搜索 / 请求 / 删除
+  // -------------------------------------------------------------------------
+
+  /** 一次性拉取好友、待处理请求、对战列表 */
+  async function loadAll(): Promise<void> {
+    if (isGuest.value || !isSupabaseConfigured || !userStore.userId) return
+
+    loading.value = true
+    error.value = null
+    try {
+      const [friendRows, incoming, outgoing, matchRows] = await Promise.all([
+        fetchFriends(),
+        fetchIncomingRequests(userStore.userId),
+        fetchOutgoingRequests(userStore.userId),
+        fetchMatches(),
+      ])
+      friends.value = friendRows
+      incomingRequests.value = incoming
+      outgoingRequests.value = outgoing
+      matches.value = matchRows
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '加载好友数据失败'
+    } finally {
+      loading.value = false
     }
   }
 
-  // 删除好友
-  const removeFriend = (friendId: string) => {
-    const index = friends.value.findIndex((f) => f.id === friendId)
-    if (index > -1) {
-      friends.value.splice(index, 1)
+  /** 只刷新对战列表（比分/状态变化后调用） */
+  async function loadMatches(): Promise<void> {
+    if (isGuest.value || !isSupabaseConfigured) return
+    try {
+      matches.value = await fetchMatches()
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '加载对战列表失败'
     }
   }
 
-  // 开始PK
-  const startPK = (opponent: Friend) => {
-    // 生成PK题目（从课程中随机选择）
-    const questions = generatePKQuestions(5)
+  /** 按用户名搜索用户（空字符串直接清空结果，不打请求） */
+  async function searchUsers(query: string): Promise<void> {
+    if (isGuest.value || !isSupabaseConfigured) return
 
-    currentMatch.value = {
-      id: `match-${Date.now()}`,
-      opponentId: opponent.id,
-      opponentName: opponent.username,
-      status: 'waiting',
-      myScore: 0,
-      opponentScore: 0,
-      questions,
-      currentQuestionIndex: 0,
+    const keyword = query.trim()
+    if (!keyword) {
+      searchResults.value = []
+      return
+    }
+
+    searching.value = true
+    error.value = null
+    try {
+      searchResults.value = await searchUsersApi(keyword)
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '搜索失败'
+    } finally {
+      searching.value = false
     }
   }
 
-  // 提交答案
-  const submitAnswer = (questionIndex: number, answer: number) => {
-    if (!currentMatch.value) return
+  function clearSearch(): void {
+    searchResults.value = []
+  }
 
-    const question = currentMatch.value.questions[questionIndex]
-    if (!question) return
+  /** 发送好友请求 */
+  async function addFriend(userId: string): Promise<void> {
+    await sendFriendRequest(userId)
+    await loadAll()
+  }
 
-    question.myAnswer = answer
+  /** 接受 / 拒绝好友请求 */
+  async function respondRequest(friendshipId: string, accept: boolean): Promise<void> {
+    await respondFriendRequest(friendshipId, accept)
+    await loadAll()
+  }
 
-    if (answer === question.correctAnswer) {
-      currentMatch.value.myScore++
+  /** 删除好友 / 撤回请求 */
+  async function removeFriend(friendshipId: string): Promise<void> {
+    await removeFriendApi(friendshipId)
+    await loadAll()
+  }
+
+  // -------------------------------------------------------------------------
+  // 对战
+  // -------------------------------------------------------------------------
+
+  /** 向好友发起挑战，返回对战 id（已有未结束的对战会复用） */
+  async function challenge(opponentId: string): Promise<string> {
+    const matchId = await createMatch(opponentId)
+    await loadMatches()
+    return matchId
+  }
+
+  /** 接受 / 拒绝挑战 */
+  async function respondToMatch(matchId: string, accept: boolean): Promise<void> {
+    await respondMatch(matchId, accept)
+    // 接受/拒绝都会改变 currentMatch（in_progress / cancelled），静默重拉一次，
+    // 让任何调用方（好友页或 PK 房间）拿到的状态都一致
+    await Promise.all([loadMatches(), loadMatch(matchId, true)])
+  }
+
+  /** 取消自己发出的挑战 */
+  async function cancelMatchById(matchId: string): Promise<void> {
+    await cancelMatch(matchId)
+    await Promise.all([loadMatches(), loadMatch(matchId, true)])
+  }
+
+  /** 读取对战详情；silent=true 时用于 Realtime 刷新，不显示整页 loading */
+  async function loadMatch(matchId: string, silent = false): Promise<void> {
+    if (isGuest.value || !isSupabaseConfigured) return
+
+    if (!silent) loadingMatch.value = true
+    error.value = null
+    try {
+      currentMatch.value = await fetchMatch(matchId)
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '加载对战失败'
+    } finally {
+      if (!silent) loadingMatch.value = false
     }
+  }
 
-    // 模拟对手答案（实际应该从服务器获取）
-    setTimeout(() => {
-      if (currentMatch.value) {
-        const q = currentMatch.value.questions[questionIndex]
-        if (q) {
-          const randomAnswer = Math.floor(Math.random() * 4)
-          q.opponentAnswer = randomAnswer
-          if (randomAnswer === q.correctAnswer) {
-            currentMatch.value.opponentScore++
-          }
+  /** 提交一道题的答案：服务端判定后重新拉取详情与列表 */
+  async function submitAnswer(
+    matchId: string,
+    questionId: string,
+    selectedIndex: number,
+  ): Promise<PkAnswerResult> {
+    submitting.value = true
+    error.value = null
+    try {
+      const result = await submitAnswerApi(matchId, questionId, selectedIndex)
+      await loadMatch(matchId, true)
+      if (result.finished) await loadMatches()
+      return result
+    } finally {
+      submitting.value = false
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Realtime
+  // -------------------------------------------------------------------------
+
+  /** 关闭并清空某个频道 */
+  function closeChannel(channel: RealtimeChannel | null): void {
+    void unsubscribe(channel)
+  }
+
+  /** 订阅好友请求 / 收到新挑战（好友页使用，幂等） */
+  function bindSocialRealtime(): void {
+    if (isGuest.value || !isSupabaseConfigured || requestChannel) return
+
+    requestChannel = subscribeIncomingRequests(userStore.userId, () => {
+      void loadAll()
+    })
+    inviteChannel = subscribeIncomingMatches(userStore.userId, () => {
+      void loadAll()
+    })
+    // 我发起的挑战被接受/拒绝时，等待态也要实时回流到好友页
+    matchUpdateChannel = subscribeMyMatchUpdates(userStore.userId, () => {
+      void loadAll()
+    })
+  }
+
+  /** 解绑好友页的实时订阅 */
+  function unbindSocialRealtime(): void {
+    closeChannel(requestChannel)
+    closeChannel(inviteChannel)
+    closeChannel(matchUpdateChannel)
+    requestChannel = null
+    inviteChannel = null
+    matchUpdateChannel = null
+  }
+
+  /** 订阅某场对战的变化（PK 房间使用；重复调用会先解绑旧的） */
+  function bindMatchRealtime(matchId: string): void {
+    if (isGuest.value || !isSupabaseConfigured) return
+    closeChannel(matchChannel)
+    matchChannel = subscribeMatch(matchId, () => {
+      void loadMatch(matchId, true)
+    })
+  }
+
+  function unbindMatchRealtime(): void {
+    closeChannel(matchChannel)
+    matchChannel = null
+  }
+
+  /** 进入在线状态频道（好友页使用） */
+  async function startPresence(): Promise<void> {
+    if (isGuest.value || !isSupabaseConfigured || presenceChannel) return
+
+    const channel = supabase.channel('hq-online', {
+      config: { presence: { key: userStore.userId } },
+    })
+    presenceChannel = channel
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState() as Record<string, Array<{ user_id?: string }>>
+        const ids = Object.values(state)
+          .flat()
+          .map((entry) => entry.user_id)
+          .filter((id): id is string => Boolean(id))
+        onlineUserIds.value = [...new Set(ids)]
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          void channel.track({ user_id: userStore.userId, username: userStore.username })
         }
-      }
-    }, 1000)
+      })
   }
 
-  // 下一题
-  const nextQuestion = () => {
-    if (!currentMatch.value) return
-
-    if (currentMatch.value.status === 'waiting') {
-      currentMatch.value.status = 'in-progress'
-      currentMatch.value.startTime = new Date()
-    }
-
-    currentMatch.value.currentQuestionIndex++
-
-    if (currentMatch.value.currentQuestionIndex >= currentMatch.value.questions.length) {
-      finishMatch()
-    }
+  /** 离开在线频道 */
+  async function stopPresence(): Promise<void> {
+    if (!presenceChannel) return
+    const channel = presenceChannel
+    presenceChannel = null
+    onlineUserIds.value = []
+    await channel.untrack()
+    await unsubscribe(channel)
   }
 
-  // 完成对战
-  const finishMatch = () => {
-    if (!currentMatch.value) return
-
-    currentMatch.value.status = 'finished'
-    currentMatch.value.endTime = new Date()
-
-    // 更新好友战绩（模拟）
-    const opponent = friends.value.find((f) => f.id === currentMatch.value!.opponentId)
-    if (opponent) {
-      opponent.totalMatches++
-      if (currentMatch.value.myScore < currentMatch.value.opponentScore) {
-        opponent.winCount++
-      }
-    }
-  }
-
-  // 重置对战
-  const resetMatch = () => {
+  // -------------------------------------------------------------------------
+  // 清理（退出登录 / 切换账号时调用）
+  // -------------------------------------------------------------------------
+  function reset(): void {
+    unbindSocialRealtime()
+    unbindMatchRealtime()
+    void stopPresence()
+    friends.value = []
+    incomingRequests.value = []
+    outgoingRequests.value = []
+    searchResults.value = []
+    matches.value = []
     currentMatch.value = null
-  }
-
-  // 生成PK题目
-  const generatePKQuestions = (count: number) => {
-    // 这里应该从实际的课程数据中随机选择题目
-    // 为了演示，使用模拟数据
-    const sampleQuestions = [
-      {
-        id: 'pk-1',
-        question: '中国历史上第一个统一的封建王朝是？',
-        options: ['夏朝', '商朝', '秦朝', '汉朝'],
-        correctAnswer: 2,
-      },
-      {
-        id: 'pk-2',
-        question: '《蒙娜丽莎》的作者是？',
-        options: ['达芬奇', '米开朗基罗', '拉斐尔', '梵高'],
-        correctAnswer: 0,
-      },
-      {
-        id: 'pk-3',
-        question: '第一次世界大战爆发的年份是？',
-        options: ['1912年', '1914年', '1916年', '1918年'],
-        correctAnswer: 1,
-      },
-      {
-        id: 'pk-4',
-        question: '丝绸之路的开拓者是？',
-        options: ['张骞', '班超', '玄奘', '郑和'],
-        correctAnswer: 0,
-      },
-      {
-        id: 'pk-5',
-        question: '法国大革命爆发的年份是？',
-        options: ['1787年', '1789年', '1791年', '1793年'],
-        correctAnswer: 1,
-      },
-    ]
-
-    return sampleQuestions.slice(0, count)
+    onlineUserIds.value = []
+    error.value = null
   }
 
   return {
+    // 状态
     friends,
+    incomingRequests,
+    outgoingRequests,
+    searchResults,
+    matches,
     currentMatch,
+    onlineUserIds,
+    loading,
+    loadingMatch,
+    searching,
+    submitting,
+    error,
+    // 派生
     onlineFriends,
+    activeMatches,
+    incomingInvites,
+    finishedMatches,
+    hasPendingRequests,
+    isGuest,
+    // 好友
+    loadAll,
+    loadMatches,
+    searchUsers,
+    clearSearch,
     addFriend,
+    respondRequest,
     removeFriend,
-    startPK,
+    // 对战
+    challenge,
+    respondToMatch,
+    cancelMatchById,
+    loadMatch,
     submitAnswer,
-    nextQuestion,
-    finishMatch,
-    resetMatch,
+    // Realtime / presence
+    bindSocialRealtime,
+    unbindSocialRealtime,
+    bindMatchRealtime,
+    unbindMatchRealtime,
+    startPresence,
+    stopPresence,
+    reset,
   }
 })

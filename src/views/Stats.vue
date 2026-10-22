@@ -90,11 +90,11 @@ const studyMinutes = computed(() => {
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- 正确率 -->
       <div class="bg-white rounded-xl shadow-lg p-6">
-        <h2 class="text-2xl font-bold text-gray-800 mb-4">答题正确率</h2>
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">课程正确率</h2>
         <div class="space-y-4">
           <div>
             <div class="flex items-center justify-between mb-2">
-              <span class="text-sm text-gray-600">总体正确率</span>
+              <span class="text-sm text-gray-600">最近完成课程的正确率</span>
               <span class="text-lg font-bold text-gray-800">
                 {{ Math.round(userStore.progress.correctRate * 100) }}%
               </span>
@@ -105,6 +105,9 @@ const studyMinutes = computed(() => {
                 :style="{ width: `${userStore.progress.correctRate * 100}%` }"
               ></div>
             </div>
+            <p class="text-xs text-gray-500 mt-3 leading-relaxed">
+              按最近一次完成课程时的答题情况计算，用于即时反馈；逐题的掌握程度与复习计划在错题本中查看。
+            </p>
           </div>
         </div>
       </div>

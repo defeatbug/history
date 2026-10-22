@@ -45,11 +45,8 @@ ${files.map((f) => `--   ${f}`).join('\n')}
 -- ============================================================================
 `)
 
-let totalLines = 0
-
 for (const f of files) {
   const content = readFileSync(join(migrationsDir, f), 'utf-8')
-  totalLines += content.split('\n').length
   parts.push(`\n-- ===== ${f} =====\n`)
   parts.push(content)
 }
@@ -57,7 +54,6 @@ for (const f of files) {
 if (seedFile) {
   try {
     const seed = readFileSync(seedFile, 'utf-8')
-    totalLines += seed.split('\n').length
     parts.push(`\n-- ===== seed.sql =====\n`)
     parts.push(seed)
   } catch {

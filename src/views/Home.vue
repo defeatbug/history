@@ -53,7 +53,11 @@ onMounted(() => {
 
       <div class="relative z-10">
         <div class="inline-block mb-4">
-          <image class="animate-bounce w-64 h-64" src="../../public/images/history_logo.png" />
+          <img
+            class="animate-bounce w-64 h-64"
+            src="/images/history_logo.png"
+            alt="HistoriaQuest"
+          />
         </div>
         <h1
           class="text-5xl md:text-7xl font-bold bg-gradient-to-r from-amber-600 via-orange-500 to-red-500 bg-clip-text text-transparent mb-4"

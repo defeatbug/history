@@ -17,6 +17,20 @@ const museum = computed(() => {
 
 const selectedArtifact = ref<Artifact | null>(null)
 
+/**
+ * 图片加载失败的文物 id。
+ * 以 id 为键而不是布尔值：列表卡片与详情弹窗共用同一份记录，
+ * 切换文物时各自按 id 独立判断，无需手动重置。
+ */
+const brokenImages = ref<Set<string>>(new Set())
+
+const markImageBroken = (id: string) => {
+  // 替换整个 Set 触发响应式，模板里的 has() 才会重新求值
+  const next = new Set(brokenImages.value)
+  next.add(id)
+  brokenImages.value = next
+}
+
 const showArtifactDetail = (artifact: Artifact) => {
   selectedArtifact.value = artifact
 }
@@ -98,15 +112,21 @@ onMounted(async () => {
           <!-- 图片区域 -->
           <div class="relative h-64 bg-gradient-to-br from-amber-100 to-orange-100 overflow-hidden">
             <img
+              v-if="artifact.imageUrl && !brokenImages.has(artifact.id)"
               :src="artifact.imageUrl"
               :alt="artifact.name"
               class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-              @error="
-                (e) => {
-                  ;(e.target as HTMLImageElement).style.display = 'none'
-                }
-              "
+              @error="markImageBroken(artifact.id)"
             />
+            <!-- 无图 / 加载失败：emoji 占位，避免只剩空渐变底 -->
+            <div
+              v-else
+              class="w-full h-full flex items-center justify-center text-7xl select-none"
+              role="img"
+              :aria-label="artifact.name"
+            >
+              🏺
+            </div>
             <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
             <div class="absolute bottom-4 left-4 right-4">
               <h3 class="text-xl font-bold text-white mb-1">{{ artifact.name }}</h3>
@@ -167,15 +187,21 @@ onMounted(async () => {
               class="relative h-96 bg-gradient-to-br from-amber-100 to-orange-100 rounded-2xl overflow-hidden"
             >
               <img
+                v-if="selectedArtifact.imageUrl && !brokenImages.has(selectedArtifact.id)"
                 :src="selectedArtifact.imageUrl"
                 :alt="selectedArtifact.name"
                 class="w-full h-full object-cover"
-                @error="
-                  (e) => {
-                    ;(e.target as HTMLImageElement).style.display = 'none'
-                  }
-                "
+                @error="markImageBroken(selectedArtifact.id)"
               />
+              <!-- 无图 / 加载失败：emoji 占位 -->
+              <div
+                v-else
+                class="w-full h-full flex items-center justify-center text-8xl select-none"
+                role="img"
+                :aria-label="selectedArtifact.name"
+              >
+                🏺
+              </div>
             </div>
           </div>
 

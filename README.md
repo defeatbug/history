@@ -1,112 +1,125 @@
-**项目概览**
+# HistoriaQuest
 
-- **名称**: `vue-project`（仓库名: `history`）
-- **说明**: 一个基于 Vue 3 + Vite 的前端学习/教学类应用，集成了 AI 聊天（DeepSeek/OpenAI 兼容接口）、Supabase 后端、课程与博物馆数据，以及丰富的页面（课程、博物馆、学习、PK、统计等）。
+游戏化的中国史 / 世界史学习应用。把课程、答题、间隔重复、勋章、博物馆文物与 AI 历史助教串成一条学习路径；后台提供课程、题目、历史事件、博物馆、文物与学习统计的内容管理。
 
-**快速开始**
+- 仓库：`defeatbug/history`（包名仍是脚手架时期的 `vue-project`）
+- 前端：Vue 3.5 + TypeScript 5.9 + Vite 7 + Pinia 3 + Vue Router 4 + Tailwind 3.4
+- 后端：Supabase（PostgreSQL + RLS + Storage + Edge Function）
+- 测试：Vitest（算法与纯函数单测）
 
-- **安装依赖**（示例使用 `npm`）:
+产品边界与"明确不做"的范围见 [PRODUCT.md](PRODUCT.md)；论文改造记录与路线图见 [docs/毕业论文改进方案.md](docs/毕业论文改进方案.md)。
 
-```
-npm install
-```
+## 快速开始
 
-- **启动开发服务器**:
+要求 Node `^20.19.0 || >=22.12.0`。
 
-```
-npm run dev
-```
-
-- **构建生产包**:
-
-```
-npm run build
+```bash
+npm ci                 # 安装依赖（锁定 lockfile）
+cp .env.example .env   # 填入 Supabase 项目地址与 anon key
+npm run dev            # 启动开发服务器
 ```
 
-- **本地预览构建产物**:
+没有配置 Supabase 时，前端会降级到本地 mock 数据，可以浏览课程与博物馆；但登录、进度同步、错题本、后台等功能需要真实后端。
 
-```
-npm run preview
-```
+### 环境变量
 
-- **类型检查**:
+只有两个变量，均为 Supabase 公开信息：
 
-```
-npm run type-check
-```
+| 变量 | 说明 |
+| :--- | :--- |
+| `VITE_SUPABASE_URL` | Supabase 项目 URL |
+| `VITE_SUPABASE_KEY` | Supabase anon / publishable key |
 
-- **代码风格**:
+AI 密钥**不在前端**：`chat` Edge Function 在服务端读取 `DEEPSEEK_API_KEY`，浏览器只与本项目的函数通信。
 
-```
-npm run lint
-npm run format
-```
-
-**关键环境变量**
-
-项目使用 Vite 环境变量（以 `VITE_` 前缀）在构建/运行时注入：
-
-- `VITE_DEEPSEEK_API_KEY`：DeepSeek（与 OpenAI API 兼容）的 API Key，位于 `src/services/openai.ts` 中读取并用于流式聊天。
-- `VITE_SUPABASE_URL`：Supabase 实例的 URL，`src/lib/supabase.ts` 使用该值创建客户端。
-- `VITE_SUPABASE_KEY`：Supabase 公共匿名 key（或服务 key，按使用场景而定）。
-
-在 macOS / zsh 下可以创建 `.env` 或 `.env.local`（切勿提交到仓库）并包含：
-
-```
-VITE_DEEPSEEK_API_KEY=your_deepseek_api_key
-VITE_SUPABASE_URL=https://xxxxx.supabase.co
-VITE_SUPABASE_KEY=your_supabase_anon_key
+```bash
+npx supabase secrets set DEEPSEEK_API_KEY=sk-xxxx
+npm run fn:deploy
 ```
 
-**主要功能概览**
+### 数据库初始化
 
-- **AI 聊天（流式）**: 使用 `src/services/openai.ts` 中的 `streamChatCompletion` 连接 DeepSeek（或 OpenAI 兼容）API，支持增量流式输出，内置系统提示为“历史知识助手”。
-- **数据与认证**: 使用 Supabase（客户端在 `src/lib/supabase.ts`）做数据存取、认证与会话管理。
-- **教学/历史模块**: 提供课程（`Lessons`）、课程详情、历史学习、博物馆浏览与文物详情页面。
-- **社交与互动**: 支持好友/排行榜/PK 对战、徽章系统与统计视图。
+按顺序执行 `supabase/migrations/` 下的 14 个迁移（`20250101000000` – `20250101000013`），再由 seed 迁移写入课程、题目、历史事件、博物馆、文物与勋章定义。
 
-**项目结构（高层）**
+```bash
+npm run cloud:setup    # 首次：关联云端项目 + 推送迁移 + 自检
+npm run cloud:check    # 自检：表、视图、函数、RLS 是否齐全
+npm run cloud:e2e      # API 层端到端冒烟（非浏览器 UI 测试）
+```
 
-- `src/`：源码入口。
-  - `src/main.ts`：应用入口与挂载。
-  - `src/App.vue`：根组件。
-  - `src/router/index.ts`：路由配置。
-  - `src/stores/`：Pinia 状态管理（`user.ts`, `lesson.ts`, `friend.ts`, `counter.ts`）。
-  - `src/services/`：外部 API 封装（如 `openai.ts` 用于 DeepSeek/OpenAI 兼容调用）。
-  - `src/lib/`：第三方 SDK 初始化（如 `supabase.ts`）。
-  - `src/composables/`：可复用逻辑（如 `useChat.ts`）。
-  - `src/components/`：通用界面组件（`AIChat.vue`, `HistoryCard.vue`, `Layout.vue` 等）。
-  - `src/views/`：页面组件（`Home.vue`, `Lessons.vue`, `Museums.vue`, `HistoryStudy.vue`, `PK.vue`, `Stats.vue`, `Timeline.vue` 等）。
-- `public/`：静态资源。
-- `supabase/`：Supabase 本地函数与配置（示例 Edge Functions 等）。
+本地数据库可用 `npm run db:start` / `db:reset` / `db:stop`，或裸 PG 工具 `npm run db:local:up`。
 
-**依赖与脚本**
+### 管理员账号
 
-- 运行时依赖示例：`vue@3`, `vue-router`, `pinia`, `@supabase/supabase-js`, `openai`, `axios`, `vue3-toastify`。
-- 常用脚本（见 `package.json`）:
-  - `dev`：启动开发服务器
-  - `build`：类型检查并构建
-  - `preview`：预览构建产物
-  - `type-check`：运行 `vue-tsc` 类型检查
-  - `lint`：运行 ESLint
-  - `format`：Prettier 格式化 `src/`
+单管理员模式：注册普通账号后，在数据库中把该账号的 `profiles.role` 改为 `admin` 即可进入 `/admin`。前端的路由守卫只是界面层拦截，真正的权限边界是 RLS 与 `is_admin()`。
 
-**调试与开发建议**
+## 功能
 
-- 编辑器：推荐 `VS Code` + `Volar`（Vue + TypeScript 支持）
-- 浏览器：推荐使用 Chromium 系并安装 `Vue.js devtools` 以便调试
+### 学习端
 
-**安全注意**
+- **首页 / 课程列表**：进度概览、断点续学入口、按难度与文明筛选
+- **课程学习**：逐题作答、即时解析、完成结算（学习时长、正确率、勋章判定）
+- **错题本**：按待复习 / 已掌握筛选，展示答错次数、连续答对与下次复习时间
+- **间隔重复复习**：SM-2 调度，复习结果回写 `user_answers`
+- **知识时间线 / 历史事件**：搜索、分类浏览、事件详情与相关事件跳转
+- **博物馆**：博物馆与文物详情，图片缺失时降级为 emoji
+- **学习统计**：完成课程、勋章、学习时长、连续学习天数、课程正确率
+- **好友**：按用户名搜索并发送请求、接受 / 拒绝、删除好友；好友战绩与在线状态（Realtime Presence）
+- **好友 PK**：向好友发起挑战、对方应战后进入同一房间作答；实时比分同步、双方各自答完自动结算、逐题复盘、历史战绩
+- **AI 历史助教**：通过 `chat` Edge Function 流式回答
 
-- 环境变量（API keys）放在本地 `.env` 或 CI secrets 中，避免提交到仓库。
+### 管理后台（`/admin`）
 
-**扩展建议（可选）**
+- 概览、课程、题目、历史事件、博物馆、文物、勋章（只读）、学习统计
+- 课程看板支持跨难度拖拽（拖拽即修改难度）、影响面常驻（学生数 / 答题记录数）
+- 图片上传到 `media` bucket（canvas 压缩，≤5MB），删除课程 / 事件前展示影响面并要求二次确认
+- 窄屏下侧栏变为抽屉，宽表格可横向滚动
 
-- 生成 `.env.example` 列出所需环境变量模板。
-- 添加单元/集成测试（`vitest` + `@vue/test-utils`）。
-- 配置 CI（如 GitHub Actions）执行类型检查、lint 与构建。
+> 好友与 PK 的规则（好友请求不变量、题目抽取、答案判定、比分结算）全部在数据库 RPC 中实现（迁移 13），前端只提交「选了第几项」；实时比分与好友请求通过 Supabase Realtime 推送。
 
----
+## 目录结构
 
-如果你希望我现在把这个 README 提交（commit）并推送到 `dev` 分支，或者我为你生成 `.env.example`，请告诉我偏好的包管理器（`npm` / `pnpm` / `yarn`）以及是否需要我替你创建并推送 commit。
+```
+src/
+  main.ts / App.vue        应用入口与根组件
+  router/index.ts          路由与登录 / 管理员守卫
+  stores/                  Pinia：user、lesson、review、friend、counter
+  services/                ai、content、progress、review、admin、friends、pk（Supabase 访问层）
+  lib/supabase.ts          Supabase 客户端（未配置时降级）
+  data/                    课程 / 历史事件 / 博物馆的本地 mock 与类型
+  utils/                   SM-2、图片压缩、ID 序列、事件关联、PK 展示派生等纯函数（含单测）
+  components/              通用组件（课程卡、知识卡、AI 助手、后台上传器等）
+  views/                   学习端页面；views/admin/ 为后台页面
+supabase/
+  migrations/              14 个迁移：表 + RLS + 函数/触发器 + 视图 + 好友/PK + 种子数据
+  functions/chat/          DeepSeek 代理（密钥服务端保管、限流）
+scripts/                   云端初始化、自检、E2E、SQL bundle 等
+```
 
+## 常用脚本
+
+| 命令 | 作用 |
+| :--- | :--- |
+| `npm run dev` / `build` / `preview` | 开发 / 类型检查 + 构建 / 预览产物 |
+| `npm run type-check` | `vue-tsc --build` |
+| `npm run lint` / `format` | ESLint 自动修复 / Prettier 格式化 `src/` |
+| `npm test` | Vitest 单测 |
+| `npm run db:*` | 本地 Supabase 启停与重置 |
+| `npm run cloud:*` | 云端初始化、自检、API 冒烟 |
+| `npm run fn:deploy` / `fn:test` | 部署 / 测试 AI Edge Function |
+
+## 已知限制
+
+- PK 是「同一套题、各自作答、实时比分」的异步房间，不做同题倒计时抢答、匹配队列与排行榜
+- 好友在线状态依赖 Realtime Presence，只表示「当前打开了页面」，不持久化最后在线时间
+- 题型只有单选（数据中两条 `matching` 题为占位，未实现连线交互）
+- 统计页未引入图表库，后台仅有两个 CSS 柱状图
+- 无 CI、无浏览器 E2E、无 PWA；图片资源体积未优化
+- 学习时长在课程完成时结算，中途退出不计时
+- 后台按产品决策不做分页、批量操作、草稿与软删除
+
+## 文档
+
+- [PRODUCT.md](PRODUCT.md)：产品事实、原则与明确不做的事
+- [docs/毕业论文改进方案.md](docs/毕业论文改进方案.md)：问题清单、优先级、数据库设计与实施记录
+- [.impeccable/surfaces/admin.md](.impeccable/surfaces/admin.md)：后台视觉与交互契约

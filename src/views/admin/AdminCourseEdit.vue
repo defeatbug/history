@@ -27,17 +27,29 @@ const userStore = useUserStore()
  * 会被误判为编辑模式，进而去查一个叫 “new” 的课程。
  * 因此以路由名为准，参数判断作为兼容。
  */
-const isNew = computed(
-  () => route.name === 'AdminCourseNew' || route.params.id === 'new',
-)
+const isNew = computed(() => route.name === 'AdminCourseNew' || route.params.id === 'new')
 const courseId = computed(() => (isNew.value ? null : String(route.params.id)))
 
 const DIFFICULTY_ORDER: Difficulty[] = ['beginner', 'intermediate', 'advanced']
 
 /** 常用 emoji —— 与现有内容数据保持同一套视觉语言 */
 const EMOJI_CHOICES = [
-  '🏛️', '🏺', '⚔️', '🏮', '🇨🇳', '📜', '🔱', '🗿',
-  '🎨', '⚙️', '🕊️', '🌍', '👑', '🐉', '⛩️', '📖',
+  '🏛️',
+  '🏺',
+  '⚔️',
+  '🏮',
+  '🇨🇳',
+  '📜',
+  '🔱',
+  '🗿',
+  '🎨',
+  '⚙️',
+  '🕊️',
+  '🌍',
+  '👑',
+  '🐉',
+  '⛩️',
+  '📖',
 ]
 
 const form = ref<CourseFormData>({
@@ -170,9 +182,13 @@ async function save() {
 const showDelete = ref(false)
 const deleteConfirmText = ref('')
 
-const canConfirmDelete = computed(
-  () => deleteConfirmText.value.trim() === form.value.title.trim(),
-)
+const canConfirmDelete = computed(() => deleteConfirmText.value.trim() === form.value.title.trim())
+
+/** 关闭删除确认弹窗，同时清空已输入的标题 */
+function cancelDelete() {
+  showDelete.value = false
+  deleteConfirmText.value = ''
+}
 
 async function confirmDelete() {
   if (!canConfirmDelete.value || !courseId.value) return
@@ -241,11 +257,16 @@ onMounted(load)
 
     <!-- ===================== 加载 / 错误 ===================== -->
     <div v-if="loading" class="flex items-center justify-center py-24 gap-3 text-[#9ca3af]">
-      <div class="w-5 h-5 border-2 border-amber-200 border-t-amber-500 rounded-full animate-spin"></div>
+      <div
+        class="w-5 h-5 border-2 border-amber-200 border-t-amber-500 rounded-full animate-spin"
+      ></div>
       <span class="text-[13px]">正在加载…</span>
     </div>
 
-    <div v-else-if="error && !course" class="bg-white rounded-2xl border border-black/[0.06] p-10 text-center">
+    <div
+      v-else-if="error && !course"
+      class="bg-white rounded-2xl border border-black/[0.06] p-10 text-center"
+    >
       <p class="text-[13px] text-rose-600">{{ error }}</p>
     </div>
 
@@ -435,7 +456,7 @@ onMounted(load)
               class="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2.5"
             >
               <p class="text-[11.5px] text-amber-800 leading-relaxed">
-                删除这门课会**连带删除**它的全部题目，以及上述学生的答题记录、
+                删除这门课会<strong>连带删除</strong>它的全部题目，以及上述学生的答题记录、
                 错题本条目与复习计划，且不可恢复。
               </p>
             </div>
@@ -497,7 +518,7 @@ onMounted(load)
           <div class="flex gap-2 justify-end pt-1">
             <button
               class="h-9 px-4 rounded-lg bg-white border border-black/[0.07] text-[13px] text-[#4b5563] hover:bg-black/[0.02]"
-              @click="showDelete = false; deleteConfirmText = ''"
+              @click="cancelDelete"
             >
               取消
             </button>

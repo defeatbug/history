@@ -120,7 +120,8 @@ export async function saveProgress(
         completed_lessons: progress.completedLessons,
         total_study_time: progress.totalStudyTime,
         correct_rate: progress.correctRate,
-        current_streak: progress.currentStreak,
+        // current_streak 由数据库触发器根据 user_answers 维护（迁移 12），
+        // 前端只读不写，避免用本地过期值覆盖服务端计算结果。
         last_lesson_id: progress.lastLessonId ?? null,
         last_position: progress.lastPosition ?? 0,
         last_studied_at: progress.lastStudiedAt ?? null,
@@ -133,6 +134,30 @@ export async function saveProgress(
   } catch (error) {
     console.warn('[progress] 保存进度失败：', error)
     return false
+  }
+}
+
+/**
+ * 读取服务端维护的连续学习天数。
+ *
+ * 计算发生在数据库（迁移 12 的 user_answers 触发器），前端只负责展示。
+ * 返回 null 表示当前不可同步或读取失败，调用方应保留本地值。
+ */
+export async function fetchCurrentStreak(userId: string): Promise<number | null> {
+  if (!canPersist(userId)) return null
+
+  try {
+    const { data, error } = await supabase
+      .from('user_progress')
+      .select('current_streak')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (error) throw error
+    return data?.current_streak ?? 0
+  } catch (error) {
+    console.warn('[progress] 读取连续学习天数失败：', error)
+    return null
   }
 }
 

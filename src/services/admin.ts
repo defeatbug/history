@@ -134,10 +134,7 @@ export async function updateCourseDifficulty(
   difficulty: Difficulty,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const { error } = await supabase
-      .from('courses')
-      .update({ difficulty })
-      .eq('id', courseId)
+    const { error } = await supabase.from('courses').update({ difficulty }).eq('id', courseId)
 
     if (error) throw error
     return { ok: true }
@@ -155,7 +152,10 @@ export async function updateCourseOrder(
   try {
     // 逐条更新；课程数量在十位数级别，无需批量 RPC
     for (const { id, sortOrder } of orders) {
-      const { error } = await supabase.from('courses').update({ sort_order: sortOrder }).eq('id', id)
+      const { error } = await supabase
+        .from('courses')
+        .update({ sort_order: sortOrder })
+        .eq('id', id)
       if (error) throw error
     }
     return { ok: true }
@@ -181,9 +181,7 @@ export interface AdminOverview {
   totalAnswers: number
 }
 
-export async function fetchAdminOverview(
-  userId: string,
-): Promise<AdminFetchResult<AdminOverview>> {
+export async function fetchAdminOverview(userId: string): Promise<AdminFetchResult<AdminOverview>> {
   const empty: AdminOverview = {
     totalCourses: 0,
     totalQuestions: 0,
@@ -198,7 +196,9 @@ export async function fetchAdminOverview(
 
   try {
     const [coursesRes, questionsRes, studentsRes] = await Promise.all([
-      supabase.from('course_admin_view').select('id, question_count, questions_without_explanation, cover_url, cover_image'),
+      supabase
+        .from('course_admin_view')
+        .select('id, question_count, questions_without_explanation, cover_url, cover_image'),
       supabase.from('questions').select('id', { count: 'exact', head: true }),
       supabase.from('student_progress_view').select('user_id, answered_count'),
     ])
@@ -325,8 +325,7 @@ export async function createCourse(
       .from('courses')
       .select('sort_order')
       .eq('difficulty', data.difficulty)
-    const nextOrder =
-      (sameLevel ?? []).reduce((max, r) => Math.max(max, r.sort_order ?? 0), -1) + 1
+    const nextOrder = (sameLevel ?? []).reduce((max, r) => Math.max(max, r.sort_order ?? 0), -1) + 1
 
     const { error } = await supabase
       .from('courses')
@@ -366,9 +365,7 @@ export async function updateCourse(
  *
  * 因此调用方**必须先展示影响面并要求二次确认**，不可直接调用。
  */
-export async function deleteCourse(
-  id: string,
-): Promise<{ ok: boolean; error?: string }> {
+export async function deleteCourse(id: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const { error } = await supabase.from('courses').delete().eq('id', id)
     if (error) throw error
@@ -556,7 +553,10 @@ export async function updateQuestionOrder(
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     for (const { id, sortOrder } of orders) {
-      const { error } = await supabase.from('questions').update({ sort_order: sortOrder }).eq('id', id)
+      const { error } = await supabase
+        .from('questions')
+        .update({ sort_order: sortOrder })
+        .eq('id', id)
       if (error) throw error
     }
     return { ok: true }
@@ -641,6 +641,8 @@ export interface StudentOverview {
   correctRateSampleSize: number
   totalAnswers: number
   totalWrong: number
+  /** 全部课程数，用于把「已完成课程数」换算成真实完成度 */
+  totalCourses: number
 }
 
 export interface DailyActivity {
@@ -666,9 +668,7 @@ interface StudentProgressRow {
 }
 
 /** 读取学生列表（一行一个学生），按用户名排序 */
-export async function fetchStudents(
-  userId: string,
-): Promise<AdminFetchResult<StudentSummary[]>> {
+export async function fetchStudents(userId: string): Promise<AdminFetchResult<StudentSummary[]>> {
   if (!isSupabaseConfigured || !canPersist(userId)) {
     return { data: [], error: '尚未登录或未配置 Supabase' }
   }
@@ -720,14 +720,23 @@ export async function fetchStudentOverview(
     correctRateSampleSize: 0,
     totalAnswers: 0,
     totalWrong: 0,
+    totalCourses: 0,
   }
 
   if (!isSupabaseConfigured || !canPersist(userId)) return { data: empty }
 
   try {
-    const { data, error } = await supabase.from('student_overview_view').select('*').maybeSingle()
+    const [overviewRes, coursesRes] = await Promise.all([
+      supabase.from('student_overview_view').select('*').maybeSingle(),
+      supabase.from('courses').select('id', { count: 'exact', head: true }),
+    ])
+
+    const { data, error } = overviewRes
     if (error) throw error
-    if (!data) return { data: empty }
+
+    // 课程数取不到时退回 0，UI 侧用 Math.max(1, totalCourses) 兜底，不会除零
+    const totalCourses = coursesRes.count ?? 0
+    if (!data) return { data: { ...empty, totalCourses } }
 
     const row = data as unknown as Record<string, number | string | null>
     return {
@@ -741,6 +750,7 @@ export async function fetchStudentOverview(
         correctRateSampleSize: Number(row.correct_rate_sample_size ?? 0),
         totalAnswers: Number(row.total_answers ?? 0),
         totalWrong: Number(row.total_wrong ?? 0),
+        totalCourses,
       },
     }
   } catch (error) {
@@ -982,10 +992,11 @@ export async function createHistoryEvent(
     const id = await generateEventId()
 
     const { data: existing } = await supabase.from('history_events').select('sort_order')
-    const nextOrder = (existing ?? []).reduce(
-      (max, r) => Math.max(max, (r as { sort_order: number | null }).sort_order ?? 0),
-      -1,
-    ) + 1
+    const nextOrder =
+      (existing ?? []).reduce(
+        (max, r) => Math.max(max, (r as { sort_order: number | null }).sort_order ?? 0),
+        -1,
+      ) + 1
 
     const { error } = await supabase
       .from('history_events')
@@ -1142,9 +1153,7 @@ function mapMuseum(row: MuseumRow, artifactCount = 0): AdminMuseum {
 }
 
 /** 读取全部博物馆（含馆内文物数），按 sort_order 排列 */
-export async function fetchAdminMuseums(
-  userId: string,
-): Promise<AdminFetchResult<AdminMuseum[]>> {
+export async function fetchAdminMuseums(userId: string): Promise<AdminFetchResult<AdminMuseum[]>> {
   if (!isSupabaseConfigured || !canPersist(userId)) {
     return { data: [], error: '尚未登录或未配置 Supabase' }
   }
@@ -1234,10 +1243,11 @@ export async function createMuseum(
     const id = await generateMuseumId()
 
     const { data: existing } = await supabase.from('museums').select('sort_order')
-    const nextOrder = (existing ?? []).reduce(
-      (max, r) => Math.max(max, (r as { sort_order: number | null }).sort_order ?? 0),
-      -1,
-    ) + 1
+    const nextOrder =
+      (existing ?? []).reduce(
+        (max, r) => Math.max(max, (r as { sort_order: number | null }).sort_order ?? 0),
+        -1,
+      ) + 1
 
     const { error } = await supabase
       .from('museums')
@@ -1518,10 +1528,11 @@ export async function createArtifact(
       .from('artifacts')
       .select('sort_order')
       .eq('museum_id', data.museumId)
-    const nextOrder = (siblings ?? []).reduce(
-      (max, r) => Math.max(max, (r as { sort_order: number | null }).sort_order ?? 0),
-      -1,
-    ) + 1
+    const nextOrder =
+      (siblings ?? []).reduce(
+        (max, r) => Math.max(max, (r as { sort_order: number | null }).sort_order ?? 0),
+        -1,
+      ) + 1
 
     const { error } = await supabase
       .from('artifacts')
@@ -1619,9 +1630,7 @@ interface BadgeRow {
 }
 
 /** 读取全部勋章，按 sort_order 排列 */
-export async function fetchAdminBadges(
-  userId: string,
-): Promise<AdminFetchResult<AdminBadge[]>> {
+export async function fetchAdminBadges(userId: string): Promise<AdminFetchResult<AdminBadge[]>> {
   if (!isSupabaseConfigured || !canPersist(userId)) {
     return { data: [], error: '尚未登录或未配置 Supabase' }
   }

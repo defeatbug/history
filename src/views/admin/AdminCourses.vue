@@ -71,7 +71,9 @@ const columns = computed(() =>
 )
 
 function needsWork(c: AdminCourse): boolean {
-  return c.questionCount === 0 || c.questionsWithoutExplanation > 0 || !c.coverUrl
+  // 缺封面：emoji 封面（coverImage）也算有封面，避免与概览页 needsAttention 口径不一致
+  const noCover = !c.coverUrl && !c.coverImage
+  return c.questionCount === 0 || c.questionsWithoutExplanation > 0 || noCover
 }
 
 function hasStudentImpact(c: AdminCourse): boolean {
@@ -80,7 +82,7 @@ function hasStudentImpact(c: AdminCourse): boolean {
 
 const alerts = computed(() => {
   const noQuestions = courses.value.filter((c) => c.questionCount === 0).length
-  const noCover = courses.value.filter((c) => !c.coverUrl).length
+  const noCover = courses.value.filter((c) => !c.coverUrl && !c.coverImage).length
   const noExplanation = courses.value.filter((c) => c.questionsWithoutExplanation > 0).length
   return [
     { key: 'noQuestions', label: '无题目', count: noQuestions },
@@ -160,10 +162,34 @@ async function onDragEnd() {
 // ---------------------------------------------------------------------------
 
 const statSegments = computed(() => [
-  { label: '内容总数', value: String(overview.value.totalCourses), unit: '门课程', icon: '▤', tone: 'neutral' },
-  { label: '待处理', value: String(overview.value.needsAttention), unit: '项', icon: '◐', tone: 'warn' },
-  { label: '学生在学', value: String(overview.value.activeStudents), unit: '人', icon: '◔', tone: 'ok' },
-  { label: '答题记录', value: String(overview.value.totalAnswers), unit: '条', icon: '◈', tone: 'neutral' },
+  {
+    label: '内容总数',
+    value: String(overview.value.totalCourses),
+    unit: '门课程',
+    icon: '▤',
+    tone: 'neutral',
+  },
+  {
+    label: '待处理',
+    value: String(overview.value.needsAttention),
+    unit: '项',
+    icon: '◐',
+    tone: 'warn',
+  },
+  {
+    label: '学生在学',
+    value: String(overview.value.activeStudents),
+    unit: '人',
+    icon: '◔',
+    tone: 'ok',
+  },
+  {
+    label: '答题记录',
+    value: String(overview.value.totalAnswers),
+    unit: '条',
+    icon: '◈',
+    tone: 'neutral',
+  },
 ])
 
 const load = async () => {
@@ -279,7 +305,9 @@ onMounted(load)
 
     <!-- ===================== 加载 / 错误 ===================== -->
     <div v-if="loading" class="flex items-center justify-center py-24 gap-3 text-[#9ca3af]">
-      <div class="w-5 h-5 border-2 border-amber-200 border-t-amber-500 rounded-full animate-spin"></div>
+      <div
+        class="w-5 h-5 border-2 border-amber-200 border-t-amber-500 rounded-full animate-spin"
+      ></div>
       <span class="text-[13px]">正在加载课程…</span>
     </div>
 
@@ -288,7 +316,10 @@ onMounted(load)
       class="bg-white rounded-2xl border border-black/[0.06] p-10 text-center space-y-3"
     >
       <p class="text-[13px] text-rose-600">加载失败：{{ error }}</p>
-      <button class="h-9 px-4 rounded-lg bg-[#111827] text-white text-[13px] font-medium" @click="load">
+      <button
+        class="h-9 px-4 rounded-lg bg-[#111827] text-white text-[13px] font-medium"
+        @click="load"
+      >
         重试
       </button>
     </div>
@@ -349,7 +380,9 @@ onMounted(load)
                 <span v-else>{{ course.coverImage || '📖' }}</span>
               </div>
               <div class="min-w-0 flex-1">
-                <h3 class="text-[13.5px] font-semibold leading-snug truncate">{{ course.title }}</h3>
+                <h3 class="text-[13.5px] font-semibold leading-snug truncate">
+                  {{ course.title }}
+                </h3>
                 <p class="text-[11.5px] text-[#9ca3af] truncate mt-0.5">
                   {{ course.period || '未设时期' }} · {{ course.civilization || '未设文明' }}
                 </p>
@@ -368,7 +401,9 @@ onMounted(load)
               <span
                 :class="[
                   'h-[22px] px-2 rounded-md text-[11px] font-medium flex items-center gap-1',
-                  course.questionCount === 0 ? 'bg-rose-50 text-rose-600' : 'bg-[#f3f4f6] text-[#6b7280]',
+                  course.questionCount === 0
+                    ? 'bg-rose-50 text-rose-600'
+                    : 'bg-[#f3f4f6] text-[#6b7280]',
                 ]"
               >
                 ◈ {{ course.questionCount }} 题
@@ -388,7 +423,9 @@ onMounted(load)
               <p class="text-[11.5px] text-amber-800 leading-relaxed">
                 <span class="font-semibold">{{ course.studentCompletedCount }} 名学生</span>
                 学过这门课<template v-if="course.answerRecordCount > 0"
-                  >，已有 <span class="font-semibold">{{ course.answerRecordCount }} 条</span> 答题记录</template
+                  >，已有
+                  <span class="font-semibold">{{ course.answerRecordCount }} 条</span>
+                  答题记录</template
                 ><template v-else>，但还没产生答题记录</template>
               </p>
             </div>

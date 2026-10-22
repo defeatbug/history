@@ -170,6 +170,33 @@ onMounted(() => {
       </button>
     </div>
 
+    <!-- 未登录 / 未配置同步：错题本没有数据来源，不能假装"没有错题" -->
+    <div
+      v-else-if="!userStore.canSync && reviewStore.isEmpty"
+      class="bg-white rounded-2xl shadow-lg p-12 text-center space-y-4 max-w-lg mx-auto"
+    >
+      <div class="text-6xl">🔐</div>
+      <h3 class="text-xl font-bold text-gray-800">登录后使用错题本</h3>
+      <p class="text-gray-600 text-sm leading-relaxed">
+        错题本和间隔重复复习都依赖账号同步。<br />
+        当前是游客或离线模式，答题记录不会保存，因此这里暂时没有内容。
+      </p>
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <button
+          @click="router.push('/login')"
+          class="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-semibold hover:from-amber-600 hover:to-orange-600 transition-all shadow-lg"
+        >
+          去登录 / 注册
+        </button>
+        <button
+          @click="router.push('/lessons')"
+          class="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-all"
+        >
+          先随便逛逛
+        </button>
+      </div>
+    </div>
+
     <!-- 空状态 -->
     <div
       v-else-if="reviewStore.isEmpty"

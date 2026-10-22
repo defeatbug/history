@@ -189,28 +189,43 @@ export type PkMatchRow = {
   created_at: string
   started_at: string | null
   finished_at: string | null
+  /** 双方各自答完全部题目的时间（迁移 13 新增），用于判断谁先完成 */
+  challenger_finished_at: string | null
+  opponent_finished_at: string | null
 }
 
-/** 错题本视图（P2-1 新增）：user_answers 关联 questions / courses */export type WrongAnswerViewRow = {
+/** PK 答题记录（迁移 13 新增）：一题一行，写入只走 pk_submit_answer RPC */
+export type PkAnswerRow = {
+  id: string
+  match_id: string
   user_id: string
   question_id: string
-  user_answer: Json
+  selected_index: number
   is_correct: boolean
-  wrong_count: number
-  correct_streak: number
-  ease_factor: number
-  interval_days: number
-  repetitions: number
-  next_review_at: string | null
   answered_at: string
-  question_content: string
-  question_type: string
-  question_options: Json
-  question_answer: Json
-  question_explanation: string | null
-  course_id: string
-  course_title: string | null
 }
+
+/** 错题本视图（P2-1 新增）：user_answers 关联 questions / courses */ export type WrongAnswerViewRow =
+  {
+    user_id: string
+    question_id: string
+    user_answer: Json
+    is_correct: boolean
+    wrong_count: number
+    correct_streak: number
+    ease_factor: number
+    interval_days: number
+    repetitions: number
+    next_review_at: string | null
+    answered_at: string
+    question_content: string
+    question_type: string
+    question_options: Json
+    question_answer: Json
+    question_explanation: string | null
+    course_id: string
+    course_title: string | null
+  }
 
 /** 课程管理视图（P2-5 新增）：含题目数与影响面统计 */
 export type CourseAdminViewRow = {
@@ -274,6 +289,108 @@ export type StudentOverviewViewRow = {
   total_wrong: number
 }
 // ---------------------------------------------------------------------------
+// 好友 / PK RPC 返回类型（迁移 13）
+//
+// 这些结构由数据库函数直接构造（jsonb 或 returns table），前端不再二次拼装。
+// 注意 options / answer 的可见性由 RPC 控制：未作答且未结束时 correct_index 为 null。
+// ---------------------------------------------------------------------------
+
+/** 我与被搜索用户的关系 */
+export type FriendRelation = 'friends' | 'request_sent' | 'request_received' | 'blocked' | 'none'
+
+/** friends_search 的一行 */
+export type FriendsSearchRow = {
+  user_id: string
+  username: string
+  avatar: string | null
+  relation: FriendRelation
+}
+
+/** friends_list 的一行：好友 + 双方 PK 战绩 + 进行中的对战 */
+export type FriendListRow = {
+  /** friendships.id，删除好友 / 撤回请求时传给 friends_remove */
+  friendship_id: string
+  user_id: string
+  username: string
+  avatar: string | null
+  total_matches: number
+  wins: number
+  active_match_id: string | null
+}
+
+/** pk_list_matches 的一行（我的视角） */
+export type PkMatchSummaryRow = {
+  id: string
+  status: PkMatchRow['status']
+  opponent_id: string | null
+  opponent_username: string
+  my_score: number
+  opponent_score: number
+  result: 'win' | 'lose' | 'draw' | 'pending'
+  question_count: number
+  my_role: 'challenger' | 'opponent'
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+
+/** pk_get_match 里的单个玩家 */
+export type PkPlayerView = {
+  id: string
+  username: string
+  score: number
+  finished_at: string | null
+}
+
+/** pk_get_match 里的一道题（correct_index 可能为 null，见上） */
+export type PkQuestionView = {
+  id: string
+  content: string
+  /** PK 只抽单选题，RPC 返回字符串数组（不必用递归 Json，避免 Pinia UnwrapRef 触发 TS2589） */
+  options: string[]
+  course_title: string | null
+  explanation: string | null
+  correct_index: number | null
+}
+
+/** 我在这场对战里的答案 */
+export type PkMyAnswerView = {
+  question_id: string
+  selected_index: number
+  is_correct: boolean
+}
+
+/** pk_get_match 的完整返回 */
+export type PkMatchDetail = {
+  id: string
+  status: PkMatchRow['status']
+  question_ids: string[]
+  challenger: PkPlayerView
+  opponent: PkPlayerView
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  questions: PkQuestionView[]
+  my_answers: PkMyAnswerView[]
+  /** 对手已作答的题数（不泄露具体选项） */
+  opponent_answered: number
+  my_role: 'challenger' | 'opponent'
+}
+
+/** pk_submit_answer 的返回 */
+export type PkAnswerResult = {
+  is_correct: boolean
+  correct_index: number
+  status: PkMatchRow['status']
+  challenger_score: number
+  opponent_score: number
+  my_finished: boolean
+  opponent_finished: boolean
+  finished: boolean
+  already_answered: boolean
+}
+
+// ---------------------------------------------------------------------------
 // Database 根类型（供 createClient<Database> 使用）
 // ---------------------------------------------------------------------------
 export interface Database {
@@ -292,6 +409,7 @@ export interface Database {
       user_badges: Table<UserBadgeRow>
       friendships: Table<FriendshipRow>
       pk_matches: Table<PkMatchRow>
+      pk_answers: Table<PkAnswerRow>
       ai_usage: Table<AiUsageRow>
     }
     Views: {
@@ -313,6 +431,51 @@ export interface Database {
       ai_usage_count: {
         Args: { p_user_id: string; p_window_seconds?: number }
         Returns: number
+      }
+      // --- 好友 / PK（迁移 13）---
+      friends_search: {
+        Args: { p_query: string }
+        Returns: FriendsSearchRow[]
+      }
+      friends_send_request: {
+        Args: { p_user_id: string }
+        Returns: string
+      }
+      friends_respond_request: {
+        Args: { p_friendship_id: string; p_accept: boolean }
+        Returns: string
+      }
+      friends_remove: {
+        Args: { p_friendship_id: string }
+        Returns: string
+      }
+      friends_list: {
+        Args: Record<string, never>
+        Returns: FriendListRow[]
+      }
+      pk_create_match: {
+        Args: { p_opponent_id: string; p_question_count?: number }
+        Returns: string
+      }
+      pk_respond_match: {
+        Args: { p_match_id: string; p_accept: boolean }
+        Returns: string
+      }
+      pk_cancel_match: {
+        Args: { p_match_id: string }
+        Returns: string
+      }
+      pk_get_match: {
+        Args: { p_match_id: string }
+        Returns: PkMatchDetail
+      }
+      pk_submit_answer: {
+        Args: { p_match_id: string; p_question_id: string; p_selected_index: number }
+        Returns: PkAnswerResult
+      }
+      pk_list_matches: {
+        Args: { p_limit?: number }
+        Returns: PkMatchSummaryRow[]
       }
     }
     Enums: Record<never, never>
