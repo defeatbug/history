@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 
@@ -8,6 +8,21 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const sidebarCollapsed = ref(false)
+
+/**
+ * 移动端抽屉开关（仅 <lg 生效）。
+ * >=lg 时侧栏是常驻 sticky 栏，开关值不影响显示；
+ * <lg 时侧栏固定为展开态，靠抽屉遮罩与汉堡按钮进出。
+ */
+const mobileOpen = ref(false)
+
+// 路由切走后收起抽屉，避免遮罩覆盖新页面
+watch(
+  () => route.path,
+  () => {
+    mobileOpen.value = false
+  },
+)
 
 /** 导航分组 —— 照参考图的分组式侧栏（Operations / Clinical / Revenue） */
 const navGroups = [
@@ -58,11 +73,20 @@ const pageTitle = computed(() => {
 <template>
   <div class="min-h-screen bg-[#f7f6f4] text-[#111827]">
     <div class="flex">
+      <!-- ===================== 移动端抽屉遮罩 ===================== -->
+      <div
+        v-if="mobileOpen"
+        class="fixed inset-0 bg-black/30 z-30 lg:hidden"
+        @click="mobileOpen = false"
+      ></div>
+
       <!-- ===================== 侧栏 ===================== -->
       <aside
         :class="[
-          'flex-shrink-0 flex flex-col h-screen sticky top-0 transition-all duration-200',
-          sidebarCollapsed ? 'w-[68px]' : 'w-[232px]',
+          'flex-shrink-0 flex flex-col h-screen sticky top-0 transition-all duration-200 bg-[#f7f6f4]',
+          'max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-40',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+          sidebarCollapsed ? 'w-[232px] lg:w-[68px]' : 'w-[232px]',
         ]"
       >
         <!-- 标识行 -->
@@ -72,11 +96,16 @@ const pageTitle = computed(() => {
           >
             H
           </div>
-          <span v-if="!sidebarCollapsed" class="font-semibold text-[15px] tracking-tight">
+          <span
+            :class="[
+              'font-semibold text-[15px] tracking-tight',
+              sidebarCollapsed ? 'lg:hidden' : '',
+            ]"
+          >
             HistoriaQuest
           </span>
           <button
-            class="ml-auto text-[#9ca3af] hover:text-[#6b7280] transition-colors"
+            class="ml-auto text-[#9ca3af] hover:text-[#6b7280] transition-colors hidden lg:block"
             :title="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
             @click="sidebarCollapsed = !sidebarCollapsed"
           >
@@ -88,8 +117,10 @@ const pageTitle = computed(() => {
         <nav class="flex-1 overflow-y-auto px-3 pb-4">
           <div v-for="group in navGroups" :key="group.label" class="mb-5">
             <p
-              v-if="!sidebarCollapsed"
-              class="px-3 mb-1.5 text-[11px] font-medium text-[#9ca3af] tracking-wide"
+              :class="[
+                'px-3 mb-1.5 text-[11px] font-medium text-[#9ca3af] tracking-wide',
+                sidebarCollapsed ? 'lg:hidden' : '',
+              ]"
             >
               {{ group.label }}
             </p>
@@ -100,14 +131,19 @@ const pageTitle = computed(() => {
               :title="sidebarCollapsed ? item.name : undefined"
               :class="[
                 'flex items-center gap-3 rounded-xl text-[13.5px] transition-colors mb-0.5',
-                sidebarCollapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2.5',
+                sidebarCollapsed ? 'px-3 py-2.5 lg:justify-center lg:px-2' : 'px-3 py-2.5',
                 isActive(item.path, item.exact)
                   ? 'bg-amber-500 text-white font-medium shadow-sm'
                   : 'text-[#4b5563] hover:bg-black/[0.04]',
               ]"
+              @click="mobileOpen = false"
             >
-              <span class="text-base leading-none w-4 text-center flex-shrink-0">{{ item.icon }}</span>
-              <span v-if="!sidebarCollapsed" class="truncate">{{ item.name }}</span>
+              <span class="text-base leading-none w-4 text-center flex-shrink-0">{{
+                item.icon
+              }}</span>
+              <span :class="['truncate', sidebarCollapsed ? 'lg:hidden' : '']">{{
+                item.name
+              }}</span>
             </RouterLink>
           </div>
         </nav>
@@ -117,17 +153,17 @@ const pageTitle = computed(() => {
           <button
             :class="[
               'w-full flex items-center gap-3 rounded-xl text-[13.5px] text-[#4b5563] hover:bg-black/[0.04] transition-colors',
-              sidebarCollapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2.5',
+              sidebarCollapsed ? 'px-3 py-2.5 lg:justify-center lg:px-2' : 'px-3 py-2.5',
             ]"
             @click="backToApp"
           >
             <span class="text-base leading-none w-4 text-center">↩</span>
-            <span v-if="!sidebarCollapsed">返回学习端</span>
+            <span :class="sidebarCollapsed ? 'lg:hidden' : ''">返回学习端</span>
           </button>
           <div
             :class="[
               'flex items-center gap-2.5 pt-3 mt-2 border-t border-black/[0.06]',
-              sidebarCollapsed ? 'justify-center' : 'px-3',
+              sidebarCollapsed ? 'px-3 lg:justify-center lg:px-0' : 'px-3',
             ]"
           >
             <div
@@ -135,7 +171,7 @@ const pageTitle = computed(() => {
             >
               {{ userStore.username.slice(0, 1) }}
             </div>
-            <div v-if="!sidebarCollapsed" class="min-w-0">
+            <div :class="['min-w-0', sidebarCollapsed ? 'lg:hidden' : '']">
               <p class="text-[13px] font-medium truncate">{{ userStore.username }}</p>
               <p class="text-[11px] text-[#9ca3af]">管理员</p>
             </div>
@@ -147,6 +183,15 @@ const pageTitle = computed(() => {
       <div class="flex-1 min-w-0 flex flex-col">
         <!-- 顶栏 -->
         <header class="h-16 flex items-center gap-4 px-6 flex-shrink-0">
+          <!-- 移动端抽屉入口：<lg 才显示 -->
+          <button
+            class="lg:hidden w-9 h-9 -ml-1 rounded-lg text-[#4b5563] hover:bg-black/[0.04] flex items-center justify-center transition-colors flex-shrink-0"
+            title="打开导航"
+            @click="mobileOpen = true"
+          >
+            <span class="text-lg leading-none">☰</span>
+          </button>
+
           <h1 class="text-[19px] font-semibold tracking-tight">{{ pageTitle }}</h1>
 
           <div class="ml-auto flex items-center gap-2">

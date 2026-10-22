@@ -24,6 +24,7 @@ const overview = ref<StudentOverview>({
   correctRateSampleSize: 0,
   totalAnswers: 0,
   totalWrong: 0,
+  totalCourses: 0,
 })
 const activity = ref<DailyActivity[]>([])
 const loading = ref(true)
@@ -84,9 +85,7 @@ const statSegments = computed(() => [
 // ---------------------------------------------------------------------------
 const CHART_HEIGHT = 132
 
-const activityMax = computed(() =>
-  Math.max(1, ...activity.value.map((d) => d.answerCount)),
-)
+const activityMax = computed(() => Math.max(1, ...activity.value.map((d) => d.answerCount)))
 
 /** 总答题数（用于判断图表是否为空） */
 const activityTotal = computed(() => activity.value.reduce((n, d) => n + d.answerCount, 0))
@@ -137,7 +136,13 @@ const bucketMax = computed(() => Math.max(1, ...completionBuckets.value.map((b) 
 // ---------------------------------------------------------------------------
 // 学生表
 // ---------------------------------------------------------------------------
-type SortKey = 'username' | 'completedCount' | 'totalStudyTime' | 'correctRate' | 'answeredCount' | 'lastStudiedAt'
+type SortKey =
+  | 'username'
+  | 'completedCount'
+  | 'totalStudyTime'
+  | 'correctRate'
+  | 'answeredCount'
+  | 'lastStudiedAt'
 const sortKey = ref<SortKey>('completedCount')
 const sortAsc = ref(false)
 
@@ -236,7 +241,9 @@ onMounted(load)
 
     <!-- ===================== 加载 / 错误 ===================== -->
     <div v-if="loading" class="flex items-center justify-center py-24 gap-3 text-[#9ca3af]">
-      <div class="w-5 h-5 border-2 border-amber-200 border-t-amber-500 rounded-full animate-spin"></div>
+      <div
+        class="w-5 h-5 border-2 border-amber-200 border-t-amber-500 rounded-full animate-spin"
+      ></div>
       <span class="text-[13px]">正在加载统计数据…</span>
     </div>
 
@@ -245,7 +252,9 @@ onMounted(load)
       class="bg-white rounded-2xl border border-black/[0.06] p-10 text-center space-y-3"
     >
       <p class="text-[13px] text-rose-600">加载失败：{{ error }}</p>
-      <button class="h-9 px-4 rounded-lg bg-[#111827] text-white text-[13px]" @click="load">重试</button>
+      <button class="h-9 px-4 rounded-lg bg-[#111827] text-white text-[13px]" @click="load">
+        重试
+      </button>
     </div>
 
     <template v-else>
@@ -260,7 +269,10 @@ onMounted(load)
             </span>
           </div>
 
-          <div v-if="activityTotal === 0" class="h-[168px] flex flex-col items-center justify-center gap-2">
+          <div
+            v-if="activityTotal === 0"
+            class="h-[168px] flex flex-col items-center justify-center gap-2"
+          >
             <p class="text-[13px] text-[#9ca3af]">近 14 天还没有答题记录</p>
           </div>
 
@@ -327,9 +339,7 @@ onMounted(load)
       <section class="bg-white rounded-2xl border border-black/[0.06] overflow-hidden">
         <div class="flex items-center gap-3 px-4 py-3 border-b border-black/[0.06]">
           <h2 class="text-[13.5px] font-semibold">学生明细</h2>
-          <span class="text-[11.5px] text-[#9ca3af]">
-            仅显示用户名，不展示邮箱等个人身份信息
-          </span>
+          <span class="text-[11.5px] text-[#9ca3af]"> 仅显示用户名，不展示邮箱等个人身份信息 </span>
           <input
             v-model="search"
             type="text"
@@ -343,104 +353,117 @@ onMounted(load)
           <p class="text-[13px] text-[#6b7280]">还没有学生账号</p>
         </div>
 
-        <div v-else>
-          <!-- 表头（可排序） -->
-          <div
-            class="grid grid-cols-[1.4fr_88px_108px_88px_100px_64px_120px] gap-3 px-4 py-2.5 border-b border-black/[0.06] text-[11.5px] font-medium text-[#9ca3af]"
-          >
-            <button class="text-left hover:text-[#6b7280]" @click="toggleSort('username')">
-              用户名 <span v-if="sortKey === 'username'">{{ sortAsc ? '↑' : '↓' }}</span>
-            </button>
-            <button class="text-center hover:text-[#6b7280]" @click="toggleSort('completedCount')">
-              完成课程 <span v-if="sortKey === 'completedCount'">{{ sortAsc ? '↑' : '↓' }}</span>
-            </button>
-            <button class="text-center hover:text-[#6b7280]" @click="toggleSort('totalStudyTime')">
-              学习时长 <span v-if="sortKey === 'totalStudyTime'">{{ sortAsc ? '↑' : '↓' }}</span>
-            </button>
-            <button class="text-center hover:text-[#6b7280]" @click="toggleSort('correctRate')">
-              正确率 <span v-if="sortKey === 'correctRate'">{{ sortAsc ? '↑' : '↓' }}</span>
-            </button>
-            <button class="text-center hover:text-[#6b7280]" @click="toggleSort('answeredCount')">
-              答题 <span v-if="sortKey === 'answeredCount'">{{ sortAsc ? '↑' : '↓' }}</span>
-            </button>
-            <span class="text-center">勋章</span>
-            <button class="text-right hover:text-[#6b7280]" @click="toggleSort('lastStudiedAt')">
-              最后活跃 <span v-if="sortKey === 'lastStudiedAt'">{{ sortAsc ? '↑' : '↓' }}</span>
-            </button>
-          </div>
-
-          <!-- 行 -->
-          <div
-            v-for="s in visibleStudents"
-            :key="s.userId"
-            class="grid grid-cols-[1.4fr_88px_108px_88px_100px_64px_120px] gap-3 px-4 py-3 items-center border-b border-black/[0.04] last:border-b-0 hover:bg-black/[0.015] transition-colors"
-          >
-            <!-- 用户名 -->
-            <div class="flex items-center gap-2.5 min-w-0">
-              <div
-                class="w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white text-[11px] font-semibold flex items-center justify-center flex-shrink-0"
+        <div v-else class="overflow-x-auto">
+          <div class="min-w-[780px]">
+            <!-- 表头（可排序） -->
+            <div
+              class="grid grid-cols-[1.4fr_88px_108px_88px_100px_64px_120px] gap-3 px-4 py-2.5 border-b border-black/[0.06] text-[11.5px] font-medium text-[#9ca3af]"
+            >
+              <button class="text-left hover:text-[#6b7280]" @click="toggleSort('username')">
+                用户名 <span v-if="sortKey === 'username'">{{ sortAsc ? '↑' : '↓' }}</span>
+              </button>
+              <button
+                class="text-center hover:text-[#6b7280]"
+                @click="toggleSort('completedCount')"
               >
-                {{ s.username.slice(0, 1) }}
-              </div>
-              <span class="text-[13px] truncate">{{ s.username }}</span>
-              <span
-                v-if="s.currentStreak >= 3"
-                class="text-[10.5px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 font-medium flex-shrink-0"
-                :title="`连续学习 ${s.currentStreak} 天`"
+                完成课程 <span v-if="sortKey === 'completedCount'">{{ sortAsc ? '↑' : '↓' }}</span>
+              </button>
+              <button
+                class="text-center hover:text-[#6b7280]"
+                @click="toggleSort('totalStudyTime')"
               >
-                🔥{{ s.currentStreak }}
-              </span>
+                学习时长 <span v-if="sortKey === 'totalStudyTime'">{{ sortAsc ? '↑' : '↓' }}</span>
+              </button>
+              <button class="text-center hover:text-[#6b7280]" @click="toggleSort('correctRate')">
+                正确率 <span v-if="sortKey === 'correctRate'">{{ sortAsc ? '↑' : '↓' }}</span>
+              </button>
+              <button class="text-center hover:text-[#6b7280]" @click="toggleSort('answeredCount')">
+                答题 <span v-if="sortKey === 'answeredCount'">{{ sortAsc ? '↑' : '↓' }}</span>
+              </button>
+              <span class="text-center">勋章</span>
+              <button class="text-right hover:text-[#6b7280]" @click="toggleSort('lastStudiedAt')">
+                最后活跃 <span v-if="sortKey === 'lastStudiedAt'">{{ sortAsc ? '↑' : '↓' }}</span>
+              </button>
             </div>
 
-            <!-- 完成课程 + 进度条 -->
-            <div class="text-center">
-              <span class="text-[13px] tabular-nums">{{ s.completedCount }}</span>
-              <div class="w-full h-1 bg-[#f3f4f6] rounded-full mt-1 overflow-hidden">
+            <!-- 行 -->
+            <div
+              v-for="s in visibleStudents"
+              :key="s.userId"
+              class="grid grid-cols-[1.4fr_88px_108px_88px_100px_64px_120px] gap-3 px-4 py-3 items-center border-b border-black/[0.04] last:border-b-0 hover:bg-black/[0.015] transition-colors"
+            >
+              <!-- 用户名 -->
+              <div class="flex items-center gap-2.5 min-w-0">
                 <div
-                  class="h-1 bg-amber-400 rounded-full"
-                  :style="{ width: `${Math.min(100, s.completedCount * 7)}%` }"
-                ></div>
+                  class="w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white text-[11px] font-semibold flex items-center justify-center flex-shrink-0"
+                >
+                  {{ s.username.slice(0, 1) }}
+                </div>
+                <span class="text-[13px] truncate">{{ s.username }}</span>
+                <span
+                  v-if="s.currentStreak >= 3"
+                  class="text-[10.5px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 font-medium flex-shrink-0"
+                  :title="`连续学习 ${s.currentStreak} 天`"
+                >
+                  🔥{{ s.currentStreak }}
+                </span>
               </div>
+
+              <!-- 完成课程 + 进度条 -->
+              <div class="text-center">
+                <span class="text-[13px] tabular-nums">{{ s.completedCount }}</span>
+                <div class="w-full h-1 bg-[#f3f4f6] rounded-full mt-1 overflow-hidden">
+                  <div
+                    class="h-1 bg-amber-400 rounded-full"
+                    :style="{
+                      width: `${Math.min(100, (s.completedCount / Math.max(1, overview.totalCourses)) * 100)}%`,
+                    }"
+                  ></div>
+                </div>
+              </div>
+
+              <!-- 学习时长 -->
+              <span class="text-center text-[12.5px] text-[#4b5563] tabular-nums">
+                {{ studyHours(s.totalStudyTime) }}
+              </span>
+
+              <!-- 正确率 -->
+              <span
+                :class="[
+                  'text-center text-[13px] font-medium tabular-nums',
+                  rateTone(s.correctRate),
+                ]"
+              >
+                {{ s.answeredCount > 0 ? `${Math.round(s.correctRate * 100)}%` : '—' }}
+              </span>
+
+              <!-- 答题数 -->
+              <span class="text-center text-[12.5px] text-[#4b5563] tabular-nums">
+                {{ s.answeredCount }}
+                <span v-if="s.wrongCount > 0" class="text-rose-500 text-[11px]">
+                  / 错 {{ s.wrongCount }}
+                </span>
+              </span>
+
+              <!-- 勋章 -->
+              <span class="text-center text-[13px] tabular-nums">{{ s.badgeCount }}</span>
+
+              <!-- 最后活跃 -->
+              <span
+                class="text-right text-[12px] text-[#6b7280]"
+                :title="s.lastStudiedAt ? formatDateTime(s.lastStudiedAt) : '从未学习'"
+              >
+                {{ s.lastStudiedAt ? formatRelativeTime(s.lastStudiedAt) : '从未学习' }}
+              </span>
             </div>
 
-            <!-- 学习时长 -->
-            <span class="text-center text-[12.5px] text-[#4b5563] tabular-nums">
-              {{ studyHours(s.totalStudyTime) }}
-            </span>
-
-            <!-- 正确率 -->
-            <span
-              :class="['text-center text-[13px] font-medium tabular-nums', rateTone(s.correctRate)]"
+            <p
+              v-if="visibleStudents.length === 0"
+              class="py-8 text-center text-[12.5px] text-[#9ca3af]"
             >
-              {{ s.answeredCount > 0 ? `${Math.round(s.correctRate * 100)}%` : '—' }}
-            </span>
-
-            <!-- 答题数 -->
-            <span class="text-center text-[12.5px] text-[#4b5563] tabular-nums">
-              {{ s.answeredCount }}
-              <span v-if="s.wrongCount > 0" class="text-rose-500 text-[11px]">
-                / 错 {{ s.wrongCount }}
-              </span>
-            </span>
-
-            <!-- 勋章 -->
-            <span class="text-center text-[13px] tabular-nums">{{ s.badgeCount }}</span>
-
-            <!-- 最后活跃 -->
-            <span
-              class="text-right text-[12px] text-[#6b7280]"
-              :title="s.lastStudiedAt ? formatDateTime(s.lastStudiedAt) : '从未学习'"
-            >
-              {{ s.lastStudiedAt ? formatRelativeTime(s.lastStudiedAt) : '从未学习' }}
-            </span>
+              没有匹配「{{ search }}」的学生
+            </p>
           </div>
-
-          <p
-            v-if="visibleStudents.length === 0"
-            class="py-8 text-center text-[12.5px] text-[#9ca3af]"
-          >
-            没有匹配「{{ search }}」的学生
-          </p>
         </div>
       </section>
 

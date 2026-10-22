@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import HistoryCard from '@/components/HistoryCard.vue'
 import { chinaHistoryEvents, type HistoryEvent } from '@/data/chinaHistory'
 import { fetchHistoryEvents } from '@/services/content'
+import { resolveRelatedEvents } from '@/utils/relatedEvents'
 
 const searchQuery = ref('')
 const selectedDynasty = ref<string>('全部')
@@ -92,6 +93,15 @@ const openEventDetail = (event: HistoryEvent) => {
 const closeEventDetail = () => {
   selectedEvent.value = null
 }
+
+/**
+ * 当前事件的相关事件列表。
+ * 悬空引用（事件被删除后残留的 id）、自引用与重复 id 由 resolveRelatedEvents 静默过滤；
+ * 解析结果为空时整个区块不渲染。
+ */
+const relatedEvents = computed(() =>
+  resolveRelatedEvents(selectedEvent.value?.relatedEvents, events.value, selectedEvent.value?.id),
+)
 
 // 页面加载动画 + 远端数据加载（失败时静默保留 mock）
 const pageLoaded = ref(false)
@@ -397,14 +407,31 @@ onMounted(async () => {
             </div>
 
             <div
-              v-if="selectedEvent.relatedEvents && selectedEvent.relatedEvents.length > 0"
+              v-if="relatedEvents.length > 0"
               class="p-6 bg-gray-50 rounded-3xl border border-gray-200"
             >
               <h3 class="text-xl font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <span>🔗</span>
                 <span>相关事件</span>
               </h3>
-              <p class="text-sm text-gray-600">推荐继续探索这些事件，强化对该历史阶段的理解。</p>
+              <p class="text-sm text-gray-600 mb-4">
+                推荐继续探索这些事件，强化对该历史阶段的理解。
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="event in relatedEvents"
+                  :key="event.id"
+                  type="button"
+                  class="group flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-gray-200 text-sm font-medium text-gray-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 hover:shadow-sm transition-all"
+                  @click="openEventDetail(event)"
+                >
+                  <span class="text-xs text-amber-600">{{ event.dynasty }}</span>
+                  <span>{{ event.title }}</span>
+                  <span class="text-amber-400 group-hover:translate-x-0.5 transition-transform"
+                    >→</span
+                  >
+                </button>
+              </div>
             </div>
           </div>
         </div>

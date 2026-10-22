@@ -93,8 +93,8 @@ const authResult = useSignIn
     ).then((r) => ({ data: r.data, error: r.error, created: true }))
 
 const authErr = authResult.error
-let session = authResult.data?.session ?? null
-let userId = authResult.data?.user?.id ?? ''
+const session = authResult.data?.session ?? null
+const userId = authResult.data?.user?.id ?? ''
 
 if (authErr) {
   bad(`${useSignIn ? '登录' : '注册'}失败：${authErr.message}`)

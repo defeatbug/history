@@ -134,8 +134,7 @@ async function load() {
   loading.value = false
 }
 
-const editQuestion = (id: string) =>
-  router.push(`/admin/courses/${courseId.value}/questions/${id}`)
+const editQuestion = (id: string) => router.push(`/admin/courses/${courseId.value}/questions/${id}`)
 const newQuestion = () => router.push(`/admin/courses/${courseId.value}/questions/new`)
 
 onMounted(load)
@@ -157,8 +156,7 @@ onMounted(load)
           {{ course?.title || '课程' }} · 题目
         </h1>
         <p v-if="course" class="text-[12px] text-[#9ca3af] mt-0.5">
-          {{ DIFFICULTY_META[course.difficulty].label }} ·
-          {{ questions.length }} 道题 ·
+          {{ DIFFICULTY_META[course.difficulty].label }} · {{ questions.length }} 道题 ·
           {{ course.studentCompletedCount }} 名学生学过
         </p>
       </div>
@@ -183,7 +181,9 @@ onMounted(load)
 
     <!-- ===================== 加载 / 错误 ===================== -->
     <div v-if="loading" class="flex items-center justify-center py-24 gap-3 text-[#9ca3af]">
-      <div class="w-5 h-5 border-2 border-amber-200 border-t-amber-500 rounded-full animate-spin"></div>
+      <div
+        class="w-5 h-5 border-2 border-amber-200 border-t-amber-500 rounded-full animate-spin"
+      ></div>
       <span class="text-[13px]">正在加载题目…</span>
     </div>
 
@@ -192,7 +192,9 @@ onMounted(load)
       class="bg-white rounded-2xl border border-black/[0.06] p-10 text-center space-y-3"
     >
       <p class="text-[13px] text-rose-600">加载失败：{{ error }}</p>
-      <button class="h-9 px-4 rounded-lg bg-[#111827] text-white text-[13px]" @click="load">重试</button>
+      <button class="h-9 px-4 rounded-lg bg-[#111827] text-white text-[13px]" @click="load">
+        重试
+      </button>
     </div>
 
     <!-- ===================== 空态 ===================== -->
@@ -212,10 +214,10 @@ onMounted(load)
     </div>
 
     <!-- ===================== 题目表格 ===================== -->
-    <div v-else class="bg-white rounded-2xl border border-black/[0.06] overflow-hidden">
+    <div v-else class="bg-white rounded-2xl border border-black/[0.06] overflow-x-auto">
       <!-- 表头 -->
       <div
-        class="grid grid-cols-[36px_52px_1fr_74px_84px_60px_96px] gap-3 px-4 py-2.5 border-b border-black/[0.06] text-[11.5px] font-medium text-[#9ca3af]"
+        class="grid grid-cols-[36px_52px_1fr_74px_84px_60px_96px] gap-3 px-4 py-2.5 min-w-[760px] border-b border-black/[0.06] text-[11.5px] font-medium text-[#9ca3af]"
       >
         <span></span>
         <span>序号</span>
@@ -238,7 +240,7 @@ onMounted(load)
           v-for="(q, index) in questions"
           :key="q.id"
           :class="[
-            'grid grid-cols-[36px_52px_1fr_74px_84px_60px_96px] gap-3 px-4 py-3 items-center border-b border-black/[0.04] last:border-b-0 hover:bg-black/[0.015] transition-colors',
+            'grid grid-cols-[36px_52px_1fr_74px_84px_60px_96px] gap-3 px-4 py-3 min-w-[760px] items-center border-b border-black/[0.04] last:border-b-0 hover:bg-black/[0.015] transition-colors',
             search && !filtered.includes(q) ? 'opacity-30' : '',
           ]"
         >
@@ -343,7 +345,9 @@ onMounted(load)
             v-else-if="deleteImpact"
             class="rounded-lg bg-[#f9fafb] border border-black/[0.05] px-3 py-2.5"
           >
-            <p class="text-[12px] text-[#6b7280]">还没有学生作答过这道题，删除不会影响任何学习记录。</p>
+            <p class="text-[12px] text-[#6b7280]">
+              还没有学生作答过这道题，删除不会影响任何学习记录。
+            </p>
           </div>
           <div v-else class="text-[12px] text-[#9ca3af]">正在检查影响面…</div>
 

@@ -10,6 +10,7 @@ import {
   saveProgress,
   saveResumePoint,
   requestBadgeEvaluation,
+  fetchCurrentStreak,
   emptyProgress,
   canPersist,
 } from '../services/progress'
@@ -152,6 +153,18 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  /**
+   * 从数据库刷新连续学习天数。
+   *
+   * 该字段由 user_answers 上的触发器维护（迁移 12），前端不再回写。
+   * 写入答题记录或学习时长后调用一次，避免页面上的"连续学习"停留在旧值。
+   */
+  const refreshStreak = async () => {
+    if (!canSync.value) return
+    const streak = await fetchCurrentStreak(userId.value)
+    if (streak !== null) progress.value.currentStreak = streak
+  }
+
   // -------------------------------------------------------------------------
   // 本地勋章判定（乐观更新，用于即时 UI 反馈）
   // -------------------------------------------------------------------------
@@ -166,6 +179,9 @@ export const useUserStore = defineStore('user', () => {
     }
     if (totalStudyTime >= 600 && !progress.value.badges.includes('badge-6')) {
       progress.value.badges.push('badge-6')
+    }
+    if (progress.value.currentStreak >= 7 && !progress.value.badges.includes('badge-4')) {
+      progress.value.badges.push('badge-4')
     }
     if (completedLessons.length >= 14 && !progress.value.badges.includes('badge-5')) {
       progress.value.badges.push('badge-5')
@@ -195,8 +211,9 @@ export const useUserStore = defineStore('user', () => {
   /** 增加学习时长（分钟） */
   const addStudyTime = async (minutes: number) => {
     progress.value.totalStudyTime += Math.max(0, Math.round(minutes))
-    checkBadgeUnlock()
     await persist()
+    await refreshStreak()
+    checkBadgeUnlock()
     await syncBadges()
   }
 
@@ -237,6 +254,7 @@ export const useUserStore = defineStore('user', () => {
 
     checkBadgeUnlock()
     await persist()
+    await refreshStreak()
     await syncBadges()
   }
 
@@ -523,6 +541,7 @@ export const useUserStore = defineStore('user', () => {
     loadFromDatabase,
     syncBadges,
     persist,
+    refreshStreak,
     // 进度更新
     completeLesson,
     addStudyTime,
