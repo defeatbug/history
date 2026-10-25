@@ -10,7 +10,8 @@
  *   * 添加好友：用户名防抖搜索（300ms / 回车立即搜索），按 relation 渲染动作；
  *   * 最近对战：已完成对战的胜负与比分，点击进入 `/pk/:id` 复盘。
  *
- * 实时性：onMounted 绑定好友请求 / 挑战订阅与在线 Presence；onUnmounted 解绑。
+ * 实时性：好友请求 / PK 邀请的社交订阅由常驻的 Layout 全局持有（红点用），
+ * 本页只负责在线 Presence（进入绑定、离开解绑）与数据加载。
  * 离开页面**不** reset 好友数据，切页回来直接复用缓存，避免重复加载闪烁。
  */
 
@@ -90,6 +91,8 @@ interface RecentMatchItem {
   label: string
   badgeClass: string
   date: string
+  /** 是否是超时/掉线结算出来的结果（并非双方都答完） */
+  timeout: boolean
 }
 
 const recentMatches = computed<RecentMatchItem[]>(() =>
@@ -100,6 +103,7 @@ const recentMatches = computed<RecentMatchItem[]>(() =>
       label: meta.label,
       badgeClass: meta.badgeClass,
       date: formatDate(match.finished_at ?? match.created_at),
+      timeout: match.finished_reason === 'timeout',
     }
   }),
 )
@@ -179,8 +183,7 @@ async function initialize(): Promise<void> {
     hasLoaded.value = true
     return
   }
-  // 先订阅再拉取：避免「拉取完成 → 订阅生效」之间到达的请求被漏掉
-  friendStore.bindSocialRealtime()
+  // 社交订阅（好友请求 / PK 邀请）由 Layout 全局持有，本页不再绑定/解绑
   void friendStore.startPresence()
   try {
     await friendStore.loadAll()
@@ -376,7 +379,7 @@ onUnmounted(() => {
     searchTimer = undefined
   }
   queuedSearchKeyword = null
-  friendStore.unbindSocialRealtime()
+  // 只解绑本页拥有的在线状态；社交订阅属于 Layout，由 store.reset() 在退出登录时清理
   void friendStore.stopPresence()
   // 只清临时搜索结果，不 reset 好友/对战数据（切页回来仍在）
   friendStore.clearSearch()
@@ -948,6 +951,9 @@ onUnmounted(() => {
                 <p class="text-xs text-gray-500">
                   {{ item.date }} · {{ item.match.question_count }} 题 ·
                   {{ item.match.my_role === 'challenger' ? '我发起' : '对方发起' }}
+                  <span v-if="item.timeout" class="ml-1 text-amber-600 font-semibold">
+                    · 超时结算
+                  </span>
                 </p>
               </div>
               <div class="text-lg font-bold text-gray-800 shrink-0">

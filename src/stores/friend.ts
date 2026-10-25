@@ -254,7 +254,10 @@ export const useFriendStore = defineStore('friend', () => {
     void unsubscribe(channel)
   }
 
-  /** 订阅好友请求 / 收到新挑战（好友页使用，幂等） */
+  /**
+   * 订阅好友请求 / 收到新挑战（全局通知：由常驻的 Layout 持有，幂等）。
+   * 好友页不再调用，避免离开页面时把全局红点订阅一起关掉。
+   */
   function bindSocialRealtime(): void {
     if (isGuest.value || !isSupabaseConfigured || requestChannel) return
 
@@ -270,7 +273,7 @@ export const useFriendStore = defineStore('friend', () => {
     })
   }
 
-  /** 解绑好友页的实时订阅 */
+  /** 解绑社交订阅（仅 reset() 在退出登录时调用；Layout 卸载时不解绑） */
   function unbindSocialRealtime(): void {
     closeChannel(requestChannel)
     closeChannel(inviteChannel)
