@@ -85,7 +85,7 @@ const statSegments = computed(() => [
 // ---------------------------------------------------------------------------
 // 图 1：近 14 天答题活跃度（柱：答题数；线：活跃学生数）
 // ---------------------------------------------------------------------------
-const activityMax = computed(() => Math.max(1, ...activity.value.map((d) => d.answerCount)))
+const activityMax = computed(() => Math.max(0, ...activity.value.map((d) => d.answerCount)))
 
 /** 总答题数（用于判断图表是否为空） */
 const activityTotal = computed(() => activity.value.reduce((n, d) => n + d.answerCount, 0))
