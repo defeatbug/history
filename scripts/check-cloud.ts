@@ -7,7 +7,7 @@
  * 检查内容：
  *   1. 环境变量是否配置
  *   2. 能否连通 Supabase
- *   3. 迁移是否已推送（13 张表）
+ *   3. 迁移是否已推送（14 张核心表，不含 ai_usage）
  *   4. 内容种子是否已灌入
  *   5. RLS 是否生效
  *
@@ -178,9 +178,20 @@ async function countRows(table: string): Promise<number | null | 'error'> {
 }
 
 const EXPECTED_TABLES = [
-  'profiles', 'courses', 'questions', 'badges', 'history_events',
-  'timeline_events', 'museums', 'artifacts', 'user_progress',
-  'user_answers', 'user_badges', 'friendships', 'pk_matches',
+  'profiles',
+  'courses',
+  'questions',
+  'badges',
+  'history_events',
+  'timeline_events',
+  'museums',
+  'artifacts',
+  'user_progress',
+  'user_answers',
+  'user_badges',
+  'friendships',
+  'pk_matches',
+  'pk_answers',
 ]
 
 console.log('\n── 3. 迁移是否已推送 ──')
@@ -200,7 +211,7 @@ if (connErrors.length > 0) {
   networkHint()
   failures++
 } else if (missing.length === 0) {
-  ok(`13 张表全部存在`)
+  ok(`${EXPECTED_TABLES.length} 张表全部存在`)
 } else {
   bad(`${missing.length} / ${EXPECTED_TABLES.length} 张表不存在`)
   info(`缺失：${missing.join(', ')}`)
@@ -257,7 +268,10 @@ if (missing.length > 0) {
   } else if (isConnectionError(error?.message ?? '')) {
     warn(`无法验证 RLS（连接问题）：${error?.message}`)
     networkHint()
-  } else if ((error as { code?: string } | null)?.code === '42501' || /permission denied/i.test(error?.message ?? '')) {
+  } else if (
+    (error as { code?: string } | null)?.code === '42501' ||
+    /permission denied/i.test(error?.message ?? '')
+  ) {
     ok('查询被拒绝（42501）—— RLS 生效')
   } else {
     warn(`查询出错，无法判定 RLS：${error?.message ?? status}`)
