@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import type { EChartsCoreOption } from 'echarts/core'
+import BaseChart from '@/components/charts/BaseChart.vue'
 import { useUserStore } from '@/stores/user'
 import {
   fetchStudents,
@@ -81,37 +83,75 @@ const statSegments = computed(() => [
 ])
 
 // ---------------------------------------------------------------------------
-// 图 1：近 14 天答题活跃度
+// 图 1：近 14 天答题活跃度（柱：答题数；线：活跃学生数）
 // ---------------------------------------------------------------------------
-const CHART_HEIGHT = 132
-
 const activityMax = computed(() => Math.max(1, ...activity.value.map((d) => d.answerCount)))
 
 /** 总答题数（用于判断图表是否为空） */
 const activityTotal = computed(() => activity.value.reduce((n, d) => n + d.answerCount, 0))
 
-function barHeight(count: number): string {
-  if (count === 0) return '2px'
-  return `${Math.max(6, Math.round((count / activityMax.value) * CHART_HEIGHT))}px`
-}
-
-/**
- * 只显示部分日期标签，避免拥挤。
- * 末尾两天一定同时显示会挤在一起，因此倒数第二天只在间隔恰好合适时才显示。
- */
-function showLabel(index: number): boolean {
-  const n = activity.value.length
-  if (index === n - 1) return true
-  if (index === 0) return true
-  // 与末尾保持至少 2 个柱的距离
-  if (n - 1 - index < 2) return false
-  return index % 3 === 0
-}
-
-function shortDay(day: string): string {
-  const [, m, d] = day.split('-')
-  return `${Number(m)}/${Number(d)}`
-}
+const activityOption = computed<EChartsCoreOption>(() => ({
+  color: ['#f59e0b', '#3b82f6'],
+  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+  legend: {
+    bottom: 0,
+    itemWidth: 10,
+    itemHeight: 10,
+    textStyle: { color: '#6b7280', fontSize: 11 },
+  },
+  grid: {
+    left: 8,
+    right: 8,
+    top: 16,
+    bottom: 30,
+    outerBoundsMode: 'same',
+    outerBoundsContain: 'axisLabel',
+  },
+  xAxis: {
+    type: 'category',
+    data: activity.value.map((d) => d.day.slice(5).replace('-', '/')),
+    axisTick: { show: false },
+    axisLine: { lineStyle: { color: '#e5e7eb' } },
+    axisLabel: { color: '#9ca3af', fontSize: 10, interval: 'auto' },
+  },
+  yAxis: [
+    {
+      type: 'value',
+      name: '答题数',
+      minInterval: 1,
+      nameTextStyle: { color: '#9ca3af', fontSize: 10 },
+      splitLine: { lineStyle: { color: '#f3f4f6' } },
+      axisLabel: { color: '#9ca3af', fontSize: 10 },
+    },
+    {
+      type: 'value',
+      name: '活跃学生',
+      minInterval: 1,
+      splitLine: { show: false },
+      axisLabel: { color: '#9ca3af', fontSize: 10 },
+    },
+  ],
+  series: [
+    {
+      name: '答题数',
+      type: 'bar',
+      barMaxWidth: 18,
+      itemStyle: { color: '#f59e0b', borderRadius: [3, 3, 0, 0] },
+      data: activity.value.map((d) => d.answerCount),
+    },
+    {
+      name: '活跃学生',
+      type: 'line',
+      yAxisIndex: 1,
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 5,
+      lineStyle: { width: 2, color: '#3b82f6' },
+      itemStyle: { color: '#3b82f6' },
+      data: activity.value.map((d) => d.activeStudents),
+    },
+  ],
+}))
 
 // ---------------------------------------------------------------------------
 // 图 2：完成课程数分布（从已加载的学生列表本地聚合，无需额外查询）
@@ -131,7 +171,40 @@ const completionBuckets = computed(() => {
   return buckets
 })
 
-const bucketMax = computed(() => Math.max(1, ...completionBuckets.value.map((b) => b.count)))
+const bucketOption = computed<EChartsCoreOption>(() => ({
+  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+  grid: {
+    left: 8,
+    right: 8,
+    top: 26,
+    bottom: 8,
+    outerBoundsMode: 'same',
+    outerBoundsContain: 'axisLabel',
+  },
+  xAxis: {
+    type: 'category',
+    data: completionBuckets.value.map((b) => b.label),
+    axisTick: { show: false },
+    axisLine: { lineStyle: { color: '#e5e7eb' } },
+    axisLabel: { color: '#6b7280', fontSize: 11 },
+  },
+  yAxis: {
+    type: 'value',
+    minInterval: 1,
+    splitLine: { lineStyle: { color: '#f3f4f6' } },
+    axisLabel: { color: '#9ca3af', fontSize: 10 },
+  },
+  series: [
+    {
+      name: '学生数',
+      type: 'bar',
+      barMaxWidth: 36,
+      itemStyle: { color: '#f59e0b', borderRadius: [4, 4, 0, 0] },
+      label: { show: true, position: 'top', color: '#6b7280', fontSize: 11 },
+      data: completionBuckets.value.map((b) => b.count),
+    },
+  ],
+}))
 
 // ---------------------------------------------------------------------------
 // 学生表
@@ -268,70 +341,26 @@ onMounted(load)
               合计 {{ activityTotal }} 次 · 峰值 {{ activityMax }}
             </span>
           </div>
-
-          <div
-            v-if="activityTotal === 0"
-            class="h-[168px] flex flex-col items-center justify-center gap-2"
-          >
-            <p class="text-[13px] text-[#9ca3af]">近 14 天还没有答题记录</p>
-          </div>
-
-          <div v-else class="mt-4">
-            <div class="flex items-end gap-1.5" :style="{ height: `${CHART_HEIGHT}px` }">
-              <div
-                v-for="d in activity"
-                :key="d.day"
-                class="flex-1 flex flex-col justify-end items-center group relative"
-                :title="`${d.day}：${d.answerCount} 次答题，${d.activeStudents} 名学生`"
-              >
-                <div
-                  class="w-full rounded-t transition-all duration-300 group-hover:opacity-80"
-                  :class="d.answerCount > 0 ? 'bg-amber-400' : 'bg-[#f3f4f6]'"
-                  :style="{ height: barHeight(d.answerCount) }"
-                ></div>
-                <!-- 悬停数值 -->
-                <span
-                  v-if="d.answerCount > 0"
-                  class="absolute -top-1 left-1/2 -translate-x-1/2 text-[10px] font-semibold text-[#6b7280] opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  {{ d.answerCount }}
-                </span>
-              </div>
-            </div>
-            <div class="flex gap-1.5 mt-1.5">
-              <span
-                v-for="(d, i) in activity"
-                :key="d.day"
-                class="flex-1 text-center text-[10px] text-[#9ca3af]"
-              >
-                {{ showLabel(i) ? shortDay(d.day) : '' }}
-              </span>
-            </div>
-          </div>
+          <BaseChart
+            :option="activityOption"
+            height="168px"
+            :empty="activityTotal === 0"
+            empty-text="近 14 天还没有答题记录"
+          />
         </section>
 
         <!-- 图 2：完成课程数分布 -->
         <section class="bg-white rounded-2xl border border-black/[0.06] p-5">
-          <div class="flex items-baseline gap-2 mb-4">
+          <div class="flex items-baseline gap-2 mb-1">
             <h2 class="text-[13.5px] font-semibold">完成课程数分布</h2>
             <span class="text-[11.5px] text-[#9ca3af] ml-auto">{{ students.length }} 名学生</span>
           </div>
-
-          <div class="space-y-3">
-            <div v-for="b in completionBuckets" :key="b.label" class="space-y-1">
-              <div class="flex justify-between text-[11.5px]">
-                <span class="text-[#6b7280]">{{ b.label }}</span>
-                <span class="text-[#111827] font-medium tabular-nums">{{ b.count }} 人</span>
-              </div>
-              <div class="w-full h-2 bg-[#f3f4f6] rounded-full overflow-hidden">
-                <div
-                  class="h-2 rounded-full transition-all duration-500"
-                  :class="b.count > 0 ? 'bg-amber-400' : 'bg-transparent'"
-                  :style="{ width: `${Math.round((b.count / bucketMax) * 100)}%` }"
-                ></div>
-              </div>
-            </div>
-          </div>
+          <BaseChart
+            :option="bucketOption"
+            height="168px"
+            :empty="students.length === 0"
+            empty-text="还没有学生账号"
+          />
         </section>
       </div>
 
