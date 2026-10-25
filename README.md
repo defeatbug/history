@@ -2,8 +2,10 @@
 
 游戏化的中国史 / 世界史学习应用。把课程、答题、间隔重复、勋章、博物馆文物与 AI 历史助教串成一条学习路径；后台提供课程、题目、历史事件、博物馆、文物与学习统计的内容管理。
 
+![CI](https://github.com/defeatbug/history/actions/workflows/ci.yml/badge.svg)
+
 - 仓库：`defeatbug/history`（包名仍是脚手架时期的 `vue-project`）
-- 前端：Vue 3.5 + TypeScript 5.9 + Vite 7 + Pinia 3 + Vue Router 4 + Tailwind 3.4
+- 前端：Vue 3.5 + TypeScript 5.9 + Vite 7 + Pinia 3 + Vue Router 4 + Tailwind 3.4 + ECharts 6（按需注册、异步加载）
 - 后端：Supabase（PostgreSQL + RLS + Storage + Edge Function）
 - 测试：Vitest（算法与纯函数单测）
 
@@ -63,7 +65,7 @@ npm run cloud:e2e      # API 层端到端冒烟（非浏览器 UI 测试）
 - **间隔重复复习**：SM-2 调度，复习结果回写 `user_answers`
 - **知识时间线 / 历史事件**：搜索、分类浏览、事件详情与相关事件跳转
 - **博物馆**：博物馆与文物详情，图片缺失时降级为 emoji
-- **学习统计**：完成课程、勋章、学习时长、连续学习天数、课程正确率
+- **学习统计**：完成课程、勋章、学习时长、连续学习天数，近 7 天答题趋势与各课程正确率图表（ECharts）
 - **好友**：按用户名搜索并发送请求、接受 / 拒绝、删除好友；好友战绩与在线状态（Realtime Presence）
 - **好友 PK**：向好友发起挑战、对方应战后进入同一房间作答；实时比分同步、双方各自答完自动结算、逐题复盘、历史战绩
 - **AI 历史助教**：通过 `chat` Edge Function 流式回答
@@ -73,6 +75,7 @@ npm run cloud:e2e      # API 层端到端冒烟（非浏览器 UI 测试）
 - 概览、课程、题目、历史事件、博物馆、文物、勋章（只读）、学习统计
 - 课程看板支持跨难度拖拽（拖拽即修改难度）、影响面常驻（学生数 / 答题记录数）
 - 图片上传到 `media` bucket（canvas 压缩，≤5MB），删除课程 / 事件前展示影响面并要求二次确认
+- 学习统计页含近 14 天答题活跃度与完成课程数分布两张 ECharts 图
 - 窄屏下侧栏变为抽屉，宽表格可横向滚动
 
 > 好友与 PK 的规则（好友请求不变量、题目抽取、答案判定、比分结算）全部在数据库 RPC 中实现（迁移 13），前端只提交「选了第几项」；实时比分与好友请求通过 Supabase Realtime 推送。
@@ -83,12 +86,12 @@ npm run cloud:e2e      # API 层端到端冒烟（非浏览器 UI 测试）
 src/
   main.ts / App.vue        应用入口与根组件
   router/index.ts          路由与登录 / 管理员守卫
-  stores/                  Pinia：user、lesson、review、friend、counter
-  services/                ai、content、progress、review、admin、friends、pk（Supabase 访问层）
+  stores/                  Pinia：user、lesson、review、friend（counter 为脚手架残留）
+  services/                ai、content、progress、review、admin、friends、pk、stats（Supabase 访问层）
   lib/supabase.ts          Supabase 客户端（未配置时降级）
   data/                    课程 / 历史事件 / 博物馆的本地 mock 与类型
-  utils/                   SM-2、图片压缩、ID 序列、事件关联、PK 展示派生等纯函数（含单测）
-  components/              通用组件（课程卡、知识卡、AI 助手、后台上传器等）
+  utils/                   SM-2、图片压缩、ID 序列、事件关联、PK 展示派生、统计聚合等纯函数（含单测）
+  components/              通用组件（课程卡、知识卡、AI 助手、后台上传器、charts/ 图表容器等）
   views/                   学习端页面；views/admin/ 为后台页面
 supabase/
   migrations/              14 个迁移：表 + RLS + 函数/触发器 + 视图 + 好友/PK + 种子数据
@@ -108,13 +111,17 @@ scripts/                   云端初始化、自检、E2E、SQL bundle 等
 | `npm run cloud:*` | 云端初始化、自检、API 冒烟 |
 | `npm run fn:deploy` / `fn:test` | 部署 / 测试 AI Edge Function |
 
+## 质量保障
+
+- GitHub Actions（`.github/workflows/ci.yml`）：PR / push 到 `dev` 时执行类型检查、ESLint（`src` + `scripts`）、Vitest 与生产构建
+- 本地对应命令：`npm run type-check`、`npx eslint src scripts`、`npm test`、`npm run build`
+
 ## 已知限制
 
 - PK 是「同一套题、各自作答、实时比分」的异步房间，不做同题倒计时抢答、匹配队列与排行榜
 - 好友在线状态依赖 Realtime Presence，只表示「当前打开了页面」，不持久化最后在线时间
 - 题型只有单选（数据中两条 `matching` 题为占位，未实现连线交互）
-- 统计页未引入图表库，后台仅有两个 CSS 柱状图
-- 无 CI、无浏览器 E2E、无 PWA；图片资源体积未优化
+- 无浏览器 E2E、无 PWA；图片资源体积未优化（ECharts 为按需异步 chunk，不进首屏）
 - 学习时长在课程完成时结算，中途退出不计时
 - 后台按产品决策不做分页、批量操作、草稿与软删除
 
