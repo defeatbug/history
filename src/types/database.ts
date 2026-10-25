@@ -192,6 +192,10 @@ export type PkMatchRow = {
   /** 双方各自答完全部题目的时间（迁移 13 新增），用于判断谁先完成 */
   challenger_finished_at: string | null
   opponent_finished_at: string | null
+  /** 结束原因（迁移 14）：completed=双方交卷；timeout=超时/掉线结算 */
+  finished_reason: 'completed' | 'timeout' | null
+  /** 超时判负时被判定放弃的用户（迁移 14）；双方都超时为 null */
+  forfeited_by: string | null
 }
 
 /** PK 答题记录（迁移 13 新增）：一题一行，写入只走 pk_submit_answer RPC */
@@ -332,6 +336,10 @@ export type PkMatchSummaryRow = {
   created_at: string
   started_at: string | null
   finished_at: string | null
+  /** 结束原因：completed / timeout（迁移 14） */
+  finished_reason: 'completed' | 'timeout' | null
+  /** 超时判负方；双方都超时为 null（迁移 14） */
+  forfeited_by: string | null
 }
 
 /** pk_get_match 里的单个玩家 */
@@ -375,6 +383,12 @@ export type PkMatchDetail = {
   /** 对手已作答的题数（不泄露具体选项） */
   opponent_answered: number
   my_role: 'challenger' | 'opponent'
+  /** 结束原因：completed / timeout（迁移 14） */
+  finished_reason: 'completed' | 'timeout' | null
+  /** 超时判负方；双方都超时为 null（迁移 14） */
+  forfeited_by: string | null
+  /** 服务端超时阈值（分钟），与迁移 14 的默认值一致 */
+  timeout_minutes: number
 }
 
 /** pk_submit_answer 的返回 */

@@ -12,6 +12,7 @@
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { canPersist } from './progress'
 import { nextNumberedId, nextArtifactId } from '@/utils/idSequence'
+import type { TimelineEventRow } from '@/types/database'
 
 export type Difficulty = 'beginner' | 'intermediate' | 'advanced'
 
@@ -1678,6 +1679,217 @@ export async function updateBadgeText(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.warn('[admin] 更新勋章失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 学习路径（timeline_events）CRUD
+//
+// 学生端 Timeline.vue 按 track（中国史 / 世界史）分栏展示，栏内按 sort_order
+// 从早到晚排列，因此 sort_order 是「栏内序号」，两个 track 各自独立计数。
+// 本表只存内容，不关联学生进度数据，删除不会波及学习记录。
+// ---------------------------------------------------------------------------
+
+/** 时间轴分支（与数据库 check 约束一致） */
+export type TimelineTrack = 'china' | 'world'
+
+/** 分支下拉选项：列表筛选与编辑表单共用 */
+export const TIMELINE_TRACKS: ReadonlyArray<{ value: TimelineTrack; label: string }> = [
+  { value: 'china', label: '中国史' },
+  { value: 'world', label: '世界史' },
+]
+
+/** 后台时间轴节点（camelCase，供界面直接使用） */
+export interface AdminTimelineEvent {
+  id: string
+  track: TimelineTrack
+  year: string | null
+  title: string
+  description: string | null
+  civilization: string | null
+  /** 关联课程 id（courses.id 外键，课程删除时置空） */
+  lessonId: string | null
+  sortOrder: number
+}
+
+/** 时间轴节点表单数据（与界面字段一一对应） */
+export interface TimelineEventFormData {
+  track: TimelineTrack
+  /** 年份原文，如「公元前2070年」 */
+  year: string
+  title: string
+  description: string
+  civilization: string
+  /** 关联课程 id，空串表示不关联 */
+  lessonId: string
+  sortOrder: number
+}
+
+function mapTimelineEvent(row: TimelineEventRow): AdminTimelineEvent {
+  return {
+    id: row.id,
+    // 数据库 check 约束已限定两个取值，这里再兜底一次，避免脏数据显示异常
+    track: row.track === 'world' ? 'world' : 'china',
+    year: row.year,
+    title: row.title,
+    description: row.description,
+    civilization: row.civilization,
+    lessonId: row.lesson_id,
+    sortOrder: row.sort_order ?? 0,
+  }
+}
+
+/** 读取全部时间轴节点，按分支与 sort_order 排列 */
+export async function fetchAdminTimelineEvents(
+  userId: string,
+): Promise<AdminFetchResult<AdminTimelineEvent[]>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) {
+    return { data: [], error: '尚未登录或未配置 Supabase' }
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('timeline_events')
+      .select('*')
+      .order('track', { ascending: true })
+      .order('sort_order', { ascending: true })
+
+    if (error) throw error
+    return { data: (data ?? []).map((r) => mapTimelineEvent(r)) }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取学习路径失败：', message)
+    return { data: [], error: message }
+  }
+}
+
+/** 读取单个时间轴节点 */
+export async function fetchAdminTimelineEvent(
+  userId: string,
+  id: string,
+): Promise<AdminFetchResult<AdminTimelineEvent | null>> {
+  if (!isSupabaseConfigured || !canPersist(userId)) {
+    return { data: null, error: '尚未登录或未配置 Supabase' }
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('timeline_events')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (error) throw error
+    return { data: data ? mapTimelineEvent(data) : null }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 读取学习路径节点失败：', message)
+    return { data: null, error: message }
+  }
+}
+
+/**
+ * 生成下一个时间轴节点 id：timeline-<最大号+1>。
+ * 纯序号逻辑见 src/utils/idSequence.ts（可单测），这里只负责查现有 id。
+ */
+export async function generateTimelineEventId(): Promise<string> {
+  try {
+    const { data } = await supabase.from('timeline_events').select('id')
+    return nextNumberedId(
+      (data ?? []).map((r) => r.id),
+      /^timeline-(\d+)$/,
+      (n) => `timeline-${n}`,
+    )
+  } catch {
+    // 兜底：用时间戳后缀，避免与现有 id 冲突
+    return `timeline-${Date.now().toString(36)}`
+  }
+}
+
+function toTimelineEventRow(data: TimelineEventFormData) {
+  return {
+    track: data.track === 'world' ? ('world' as const) : ('china' as const),
+    year: data.year.trim() || null,
+    title: data.title.trim(),
+    description: data.description.trim() || null,
+    civilization: data.civilization.trim() || null,
+    lesson_id: data.lessonId.trim() || null,
+    // sort_order 是栏内序号；界面保证是非负整数，这里做最后一道兜底
+    sort_order: Number.isFinite(data.sortOrder) ? Math.max(0, Math.trunc(data.sortOrder)) : 0,
+  }
+}
+
+/** 新建时间轴节点（sort_order 由表单给出，新建时默认取当前最大值+1） */
+export async function createTimelineEvent(
+  data: TimelineEventFormData,
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  try {
+    const id = await generateTimelineEventId()
+    const { error } = await supabase
+      .from('timeline_events')
+      .insert({ id, ...toTimelineEventRow(data) })
+
+    if (error) throw error
+    return { ok: true, id }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 新建学习路径节点失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 更新时间轴节点（含 sort_order） */
+export async function updateTimelineEvent(
+  id: string,
+  data: TimelineEventFormData,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('timeline_events')
+      .update(toTimelineEventRow(data))
+      .eq('id', id)
+    if (error) throw error
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 更新学习路径节点失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/**
+ * 批量更新排序：列表拖拽后按「栏内新顺序」整体提交，
+ * 只传变化过的项，避免无谓写库。
+ */
+export async function updateTimelineOrder(
+  orders: Array<{ id: string; sortOrder: number }>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    for (const { id, sortOrder } of orders) {
+      const { error } = await supabase
+        .from('timeline_events')
+        .update({ sort_order: sortOrder })
+        .eq('id', id)
+      if (error) throw error
+    }
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 更新学习路径排序失败：', message)
+    return { ok: false, error: message }
+  }
+}
+
+/** 删除时间轴节点（不关联学生数据，调用方需二次确认） */
+export async function deleteTimelineEvent(id: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from('timeline_events').delete().eq('id', id)
+    if (error) throw error
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[admin] 删除学习路径节点失败：', message)
     return { ok: false, error: message }
   }
 }
