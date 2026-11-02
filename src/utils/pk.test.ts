@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { PkMatchDetail, PkQuestionView } from '@/types/database'
 import {
   matchOutcome,
+  detailOutcome,
   myScore,
   opponentScore,
   me,
@@ -40,6 +41,9 @@ const match = (patch: Partial<PkMatchDetail> = {}): PkMatchDetail => ({
   my_answers: [],
   opponent_answered: 0,
   my_role: 'challenger',
+  finished_reason: null,
+  forfeited_by: null,
+  timeout_minutes: 10,
   ...patch,
 })
 
@@ -54,6 +58,54 @@ describe('matchOutcome —— 胜负判定', () => {
     expect(matchOutcome(5, 3, 'finished')).toBe('win')
     expect(matchOutcome(2, 4, 'finished')).toBe('lose')
     expect(matchOutcome(4, 4, 'finished')).toBe('draw')
+  })
+})
+
+describe('detailOutcome —— 超时判负优先于比分', () => {
+  it('我被判超时，即使比分领先也算负', () => {
+    const m = match({
+      status: 'finished',
+      finished_reason: 'timeout',
+      forfeited_by: 'u-1',
+      challenger: { id: 'u-1', username: '我', score: 5, finished_at: null },
+      opponent: { id: 'u-2', username: '对手', score: 1, finished_at: null },
+    })
+    expect(detailOutcome(m)).toBe('lose')
+  })
+
+  it('对手被判超时，即使我比分落后也算胜', () => {
+    const m = match({
+      status: 'finished',
+      finished_reason: 'timeout',
+      forfeited_by: 'u-2',
+      challenger: { id: 'u-1', username: '我', score: 1, finished_at: null },
+      opponent: { id: 'u-2', username: '对手', score: 5, finished_at: null },
+    })
+    expect(detailOutcome(m)).toBe('win')
+  })
+
+  it('双方都超时（forfeited_by=null）按比分判定', () => {
+    const m = match({
+      status: 'finished',
+      finished_reason: 'timeout',
+      challenger: { id: 'u-1', username: '我', score: 2, finished_at: null },
+      opponent: { id: 'u-2', username: '对手', score: 4, finished_at: null },
+    })
+    expect(detailOutcome(m)).toBe('lose')
+  })
+
+  it('正常交卷仍按比分判定', () => {
+    const m = match({
+      status: 'finished',
+      finished_reason: 'completed',
+      challenger: { id: 'u-1', username: '我', score: 3, finished_at: null },
+      opponent: { id: 'u-2', username: '对手', score: 3, finished_at: null },
+    })
+    expect(detailOutcome(m)).toBe('draw')
+  })
+
+  it('未结束一律 pending', () => {
+    expect(detailOutcome(match({ status: 'in_progress' }))).toBe('pending')
   })
 })
 

@@ -149,6 +149,11 @@ async function probe(table: string): Promise<Probe> {
       /Could not find the table|schema cache/i.test(msg)
 
     if (missing) return { exists: false, count: null, error: null }
+    // 私有表（如 pk_answers）对 anon 直接 REVOKE，会返回 permission denied；
+    // 这恰好说明表存在且权限边界生效，不应误判为「表缺失」。
+    if (/permission denied/i.test(msg)) {
+      return { exists: true, count: null, error: null }
+    }
     if (!error && status >= 200 && status < 300) {
       return { exists: true, count: null, error: null }
     }

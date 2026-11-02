@@ -29,6 +29,20 @@ export function matchOutcome(
   return 'draw'
 }
 
+/**
+ * 对战详情视角的胜负：优先识别「超时判负」。
+ *
+ * 服务端结算超时后 finished_reason='timeout'、forfeited_by=被判负方。
+ * 普通完成仍按比分判定；双方都超时（forfeited_by=null）也按比分。
+ */
+export function detailOutcome(match: PkMatchDetail): MatchOutcome {
+  if (match.status !== 'finished') return 'pending'
+  if (match.finished_reason === 'timeout' && match.forfeited_by) {
+    return match.forfeited_by === me(match).id ? 'lose' : 'win'
+  }
+  return matchOutcome(myScore(match), opponentScore(match), match.status)
+}
+
 /** 我在对战中的比分（按 my_role 取对应字段） */
 export function myScore(match: PkMatchDetail): number {
   return match.my_role === 'challenger' ? match.challenger.score : match.opponent.score

@@ -22,6 +22,8 @@ import AdminQuestions from '@/views/admin/AdminQuestions.vue'
 import AdminQuestionEdit from '@/views/admin/AdminQuestionEdit.vue'
 import AdminEvents from '@/views/admin/AdminEvents.vue'
 import AdminEventEdit from '@/views/admin/AdminEventEdit.vue'
+import AdminTimeline from '@/views/admin/AdminTimeline.vue'
+import AdminTimelineEdit from '@/views/admin/AdminTimelineEdit.vue'
 import AdminMuseums from '@/views/admin/AdminMuseums.vue'
 import AdminMuseumEdit from '@/views/admin/AdminMuseumEdit.vue'
 import AdminArtifacts from '@/views/admin/AdminArtifacts.vue'
@@ -87,6 +89,10 @@ const router = createRouter({
         { path: 'events', name: 'AdminEvents', component: AdminEvents },
         { path: 'events/new', name: 'AdminEventNew', component: AdminEventEdit },
         { path: 'events/:id', name: 'AdminEventEdit', component: AdminEventEdit },
+        // 学习路径：静态 new 必须写在 :id 之前，否则会被当成 id
+        { path: 'timeline', name: 'AdminTimeline', component: AdminTimeline },
+        { path: 'timeline/new', name: 'AdminTimelineNew', component: AdminTimelineEdit },
+        { path: 'timeline/:id', name: 'AdminTimelineEdit', component: AdminTimelineEdit },
         { path: 'museums', name: 'AdminMuseums', component: AdminMuseums },
         { path: 'museums/new', name: 'AdminMuseumNew', component: AdminMuseumEdit },
         { path: 'museums/:id', name: 'AdminMuseumEdit', component: AdminMuseumEdit },

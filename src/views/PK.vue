@@ -18,7 +18,7 @@ import type { PkMatchDetail, PkQuestionView } from '@/types/database'
 import {
   answerProgress,
   canContinue,
-  matchOutcome,
+  detailOutcome,
   me,
   myScore,
   nextQuestion,
@@ -100,7 +100,7 @@ const rivalInitial = computed(() => {
   return name ? name.charAt(0).toUpperCase() : '?'
 })
 const outcome = computed(() =>
-  matchOutcome(myPoints.value, rivalPoints.value, match.value?.status ?? 'waiting'),
+  match.value ? detailOutcome(match.value) : ('pending' as const),
 )
 
 const STATUS_LABELS: Record<PkMatchDetail['status'], string> = {
@@ -116,7 +116,35 @@ const OUTCOME_META = {
   draw: { emoji: '🤝', title: '平局', subtitle: '势均力敌，都很精彩' },
   pending: { emoji: '⏳', title: '对战进行中', subtitle: '结果很快就会出来' },
 } as const
-const outcomeMeta = computed(() => OUTCOME_META[outcome.value])
+/**
+ * 结果文案：普通对局按胜负取固定文案；超时结算单独说明，
+ * 避免用户看到「惜败」却不知道是对手掉线还是自己没答完。
+ */
+const outcomeMeta = computed(() => {
+  const detail = match.value
+  if (detail?.status === 'finished' && detail.finished_reason === 'timeout') {
+    if (!detail.forfeited_by) {
+      return {
+        emoji: '⏱️',
+        title: '双方超时',
+        subtitle: `双方都超过 ${detail.timeout_minutes} 分钟没有作答，按比分判定结果`,
+      }
+    }
+    if (detail.forfeited_by === me(detail).id) {
+      return {
+        emoji: '⌛',
+        title: '超时判负',
+        subtitle: `你超过 ${detail.timeout_minutes} 分钟没有作答，本局判负`,
+      }
+    }
+    return {
+      emoji: '🏆',
+      title: '对手超时，你获胜',
+      subtitle: `对手超过 ${detail.timeout_minutes} 分钟没有作答，本局判负`,
+    }
+  }
+  return OUTCOME_META[outcome.value]
+})
 
 // ---------------------------------------------------------------------------
 // 本地交互状态
@@ -133,6 +161,8 @@ const actionBusy = ref(false)
 const showReview = ref(true)
 /** 用于丢弃上一场对战未完成的加载 */
 let loadToken = 0
+/** 超时结算轮询：服务端只在读取对战时结算，进行中的对局每 30 秒拉一次 */
+let timeoutPoll: ReturnType<typeof setInterval> | undefined
 
 /** 当前展示的题：优先停在刚答完的那道（展示判定），否则取下一道未答题 */
 const currentQuestion = computed<PkQuestionView | null>(() => {
@@ -397,10 +427,16 @@ async function cancelChallenge(): Promise<void> {
 // ---------------------------------------------------------------------------
 onMounted(() => {
   void enterMatch(routeMatchId.value)
+  timeoutPoll = setInterval(() => {
+    const detail = match.value
+    if (!detail || detail.status !== 'in_progress' || isGuest.value) return
+    void friendStore.loadMatch(detail.id, true)
+  }, 30_000)
 })
 
 onUnmounted(() => {
   loadToken += 1
+  if (timeoutPoll) clearInterval(timeoutPoll)
   friendStore.unbindMatchRealtime()
 })
 
@@ -632,6 +668,10 @@ watch(currentMatch, (value) => {
               共 {{ totalQuestions }} 题
             </span>
           </div>
+
+          <p class="mt-1 text-right text-[11px] text-gray-500">
+            双方超过 {{ match.timeout_minutes }} 分钟未作答将按超时判负
+          </p>
 
           <div class="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
             <div class="text-center">

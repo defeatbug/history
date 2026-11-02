@@ -32,6 +32,7 @@ const navGroups = [
       { name: '概览', path: '/admin', icon: '◍', exact: true },
       { name: '课程', path: '/admin/courses', icon: '▤' },
       { name: '历史事件', path: '/admin/events', icon: '◈' },
+      { name: '学习路径', path: '/admin/timeline', icon: '◷' },
       { name: '博物馆', path: '/admin/museums', icon: '▣' },
       { name: '文物', path: '/admin/artifacts', icon: '◐' },
       { name: '勋章', path: '/admin/badges', icon: '◇' },
@@ -58,6 +59,7 @@ const backToApp = () => router.push('/')
 const newTarget = computed<string | null>(() => {
   if (route.path.startsWith('/admin/courses')) return '/admin/courses/new'
   if (route.path.startsWith('/admin/events')) return '/admin/events/new'
+  if (route.path.startsWith('/admin/timeline')) return '/admin/timeline/new'
   if (route.path.startsWith('/admin/museums')) return '/admin/museums/new'
   if (route.path.startsWith('/admin/artifacts')) return '/admin/artifacts/new'
   return null

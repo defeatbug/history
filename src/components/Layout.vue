@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useFriendStore } from '@/stores/friend'
@@ -12,6 +12,38 @@ const friendStore = useFriendStore()
 
 const isMenuOpen = ref(false)
 const isAIChatOpen = ref(false)
+
+// ---------------------------------------------------------------------------
+// 好友 / PK 通知红点
+// ---------------------------------------------------------------------------
+/** 待处理数量：收到的好友请求 + 别人发来的 PK 邀请（只统计需要我处理的） */
+const pendingCount = computed(() => {
+  if (friendStore.isGuest) return 0
+  return friendStore.incomingRequests.length + friendStore.incomingInvites.length
+})
+
+/** 徽标文案：超过 9 条折叠为 9+，避免把导航撑变形 */
+const pendingBadge = computed(() => (pendingCount.value > 9 ? '9+' : String(pendingCount.value)))
+
+/** 悬浮 / 无障碍说明 */
+const pendingTitle = computed(() => `有 ${pendingCount.value} 条好友请求或挑战`)
+
+/** 是否需要在某个导航项上显示红点 */
+const isPendingTarget = (routeName: string): boolean =>
+  routeName === 'Friends' && pendingCount.value > 0
+
+/**
+ * 全局红点：社交订阅的所有权交给常驻的 Layout，这样在任何页面都能实时收到
+ * 好友请求 / PK 邀请（好友页不再自己订阅，避免离开时把全局红点订阅一起关掉）。
+ * bindSocialRealtime 本身幂等，重复挂载不会重复订阅。
+ *
+ * 卸载时**不**解绑：订阅生命周期跟随登录态，由 friendStore.reset() 在退出登录时清理。
+ */
+onMounted(() => {
+  if (friendStore.isGuest) return
+  friendStore.bindSocialRealtime()
+  void friendStore.loadAll()
+})
 
 const handleLogout = () => {
   // 好友/PK 数据与在线状态属于账号隐私，退出时一并清空并退订 Realtime
@@ -69,13 +101,22 @@ const isActive = (path: string, routeName?: string) => {
               :key="item.path"
               :to="item.path"
               :class="[
-                'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                'relative px-4 py-2 rounded-lg text-sm font-medium transition-colors',
                 isActive(item.path, item.routeName)
                   ? 'bg-amber-500 text-white'
                   : 'text-gray-700 hover:bg-black/[0.04]',
               ]"
+              :title="isPendingTarget(item.routeName) ? pendingTitle : undefined"
+              :aria-label="isPendingTarget(item.routeName) ? pendingTitle : undefined"
             >
               {{ item.name }}
+              <span
+                v-if="isPendingTarget(item.routeName)"
+                class="absolute -top-1.5 -right-1.5 min-w-[1.15rem] h-[1.15rem] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none flex items-center justify-center ring-2 ring-white"
+                aria-hidden="true"
+              >
+                {{ pendingBadge }}
+              </span>
             </router-link>
           </div>
 
@@ -139,13 +180,22 @@ const isActive = (path: string, routeName?: string) => {
             :to="item.path"
             @click="isMenuOpen = false"
             :class="[
-              'block px-3 py-2 rounded-md text-base font-medium',
+              'relative block px-3 py-2 rounded-md text-base font-medium',
               isActive(item.path, item.routeName)
                 ? 'bg-amber-500 text-white'
                 : 'text-gray-700 hover:bg-black/[0.04]',
             ]"
+            :title="isPendingTarget(item.routeName) ? pendingTitle : undefined"
+            :aria-label="isPendingTarget(item.routeName) ? pendingTitle : undefined"
           >
             {{ item.name }}
+            <span
+              v-if="isPendingTarget(item.routeName)"
+              class="absolute right-3 top-1/2 -translate-y-1/2 min-w-[1.15rem] h-[1.15rem] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none flex items-center justify-center"
+              aria-hidden="true"
+            >
+              {{ pendingBadge }}
+            </span>
           </router-link>
           <!-- 移动端登录/登出 -->
           <div class="border-t border-gray-200 mt-2 pt-2">
